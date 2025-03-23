@@ -9,9 +9,21 @@
 /* Begin PBXBuildFile section */
 		BB46825B2D9002A100B5165D /* whisper.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = BB46825A2D9002A100B5165D /* whisper.xcframework */; };
 		BB46825C2D9002A100B5165D /* whisper.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = BB46825A2D9002A100B5165D /* whisper.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		BB4682622D9002DE00B5165D /* ggml-base-q5_1.bin in Resources */ = {isa = PBXBuildFile; fileRef = BB46825F2D9002DE00B5165D /* ggml-base-q5_1.bin */; };
-		BB4682642D9088B800B5165D /* ggml-large-v3-turbo-q5_0.bin in Resources */ = {isa = PBXBuildFile; fileRef = BB4682632D9088B800B5165D /* ggml-large-v3-turbo-q5_0.bin */; };
 /* End PBXBuildFile section */
+
+/* Begin PBXBuildRule section */
+		BB4682662D90B1CF00B5165D /* PBXBuildRule */ = {
+			isa = PBXBuildRule;
+			compilerSpec = com.apple.compilers.proxy.script;
+			fileType = pattern.proxy;
+			inputFiles = (
+			);
+			isEditable = 1;
+			outputFiles = (
+			);
+			script = "# Type a script or drag a script file from your workspace to insert its path.\n";
+		};
+/* End PBXBuildRule section */
 
 /* Begin PBXContainerItemProxy section */
 		BB71AE662D8E888100FC4CA0 /* PBXContainerItemProxy */ = {
@@ -42,33 +54,48 @@
 			name = "Embed Frameworks";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		BB46826E2D90CF6B00B5165D /* CopyFiles */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 12;
+			dstPath = Models;
+			dstSubfolderSpec = 7;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		BB46825A2D9002A100B5165D /* whisper.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = whisper.xcframework; path = "../whisper.cpp/build-apple/whisper.xcframework"; sourceTree = "<group>"; };
-		BB46825F2D9002DE00B5165D /* ggml-base-q5_1.bin */ = {isa = PBXFileReference; lastKnownFileType = archive.macbinary; path = "ggml-base-q5_1.bin"; sourceTree = "<group>"; };
-		BB4682632D9088B800B5165D /* ggml-large-v3-turbo-q5_0.bin */ = {isa = PBXFileReference; lastKnownFileType = archive.macbinary; path = "ggml-large-v3-turbo-q5_0.bin"; sourceTree = "<group>"; };
 		BB71AE552D8E888000FC4CA0 /* YapNotes.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = YapNotes.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		BB71AE652D8E888100FC4CA0 /* YapNotesTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = YapNotesTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		BB71AE6F2D8E888100FC4CA0 /* YapNotesUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = YapNotesUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
-/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		BB4682582D90027D00B5165D /* Exceptions for "YapNotes" folder in "YapNotes" target */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+/* Begin PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
+		BB4682702D90CFAC00B5165D /* Exceptions for "Resources" folder in "Copy Files" phase from "YapNotes" target */ = {
+			isa = PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet;
+			attributesByRelativePath = {
+				"Models/ggml-base-q5_1.bin" = (CodeSignOnCopy, );
+			};
+			buildPhase = BB46826E2D90CF6B00B5165D /* CopyFiles */;
 			membershipExceptions = (
-				Info.plist,
+				"Models/ggml-base-q5_1.bin",
 			);
-			target = BB71AE542D8E888000FC4CA0 /* YapNotes */;
 		};
-/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+/* End PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		BB71AE572D8E888000FC4CA0 /* YapNotes */ = {
+		BB46826A2D90CE9F00B5165D /* Resources */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
-				BB4682582D90027D00B5165D /* Exceptions for "YapNotes" folder in "YapNotes" target */,
+				BB4682702D90CFAC00B5165D /* Exceptions for "Resources" folder in "Copy Files" phase from "YapNotes" target */,
 			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		BB71AE572D8E888000FC4CA0 /* YapNotes */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
 			path = YapNotes;
 			sourceTree = "<group>";
 		};
@@ -118,32 +145,15 @@
 			name = Frameworks;
 			sourceTree = "<group>";
 		};
-		BB4682602D9002DE00B5165D /* Models */ = {
-			isa = PBXGroup;
-			children = (
-				BB4682632D9088B800B5165D /* ggml-large-v3-turbo-q5_0.bin */,
-				BB46825F2D9002DE00B5165D /* ggml-base-q5_1.bin */,
-			);
-			path = Models;
-			sourceTree = "<group>";
-		};
-		BB4682612D9002DE00B5165D /* Resources */ = {
-			isa = PBXGroup;
-			children = (
-				BB4682602D9002DE00B5165D /* Models */,
-			);
-			path = Resources;
-			sourceTree = "<group>";
-		};
 		BB71AE4C2D8E888000FC4CA0 = {
 			isa = PBXGroup;
 			children = (
+				BB46826A2D90CE9F00B5165D /* Resources */,
 				BB71AE572D8E888000FC4CA0 /* YapNotes */,
 				BB71AE682D8E888100FC4CA0 /* YapNotesTests */,
 				BB71AE722D8E888100FC4CA0 /* YapNotesUITests */,
 				BB4682592D9002A100B5165D /* Frameworks */,
 				BB71AE562D8E888000FC4CA0 /* Products */,
-				BB4682612D9002DE00B5165D /* Resources */,
 			);
 			sourceTree = "<group>";
 		};
@@ -166,14 +176,16 @@
 			buildPhases = (
 				BB71AE512D8E888000FC4CA0 /* Sources */,
 				BB71AE522D8E888000FC4CA0 /* Frameworks */,
-				BB71AE532D8E888000FC4CA0 /* Resources */,
 				BB46825D2D9002A100B5165D /* Embed Frameworks */,
+				BB46826E2D90CF6B00B5165D /* CopyFiles */,
 			);
 			buildRules = (
+				BB4682662D90B1CF00B5165D /* PBXBuildRule */,
 			);
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
+				BB46826A2D90CE9F00B5165D /* Resources */,
 				BB71AE572D8E888000FC4CA0 /* YapNotes */,
 			);
 			name = YapNotes;
@@ -236,6 +248,9 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
+				KnownAssetTags = (
+					New,
+				);
 				LastSwiftUpdateCheck = 1610;
 				LastUpgradeCheck = 1610;
 				TargetAttributes = {
@@ -274,15 +289,6 @@
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		BB71AE532D8E888000FC4CA0 /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				BB4682622D9002DE00B5165D /* ggml-base-q5_1.bin in Resources */,
-				BB4682642D9088B800B5165D /* ggml-large-v3-turbo-q5_0.bin in Resources */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 		BB71AE632D8E888100FC4CA0 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -467,6 +473,7 @@
 				DEVELOPMENT_TEAM = BMMD5K9G2L;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Voice to text";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -496,6 +503,7 @@
 				DEVELOPMENT_TEAM = BMMD5K9G2L;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Voice to text";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;

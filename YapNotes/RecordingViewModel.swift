@@ -61,7 +61,7 @@ class RecordingViewModel: ObservableObject {
 
     /// Load the smaller base model (ggml-base-q5_1)
     private func loadLocalModel() {
-        if let modelPath = Bundle.main.path(forResource: "ggml-base-q5_1", ofType: "bin") {
+        if let modelPath = Bundle.main.path(forResource: "ggml-base-q5_1", ofType: "bin", inDirectory: "Models") {
             do {
                 whisperContext = try WhisperContext.createContext(path: modelPath)
             } catch {
