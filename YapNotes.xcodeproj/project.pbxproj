@@ -10,6 +10,7 @@
 		BB46825B2D9002A100B5165D /* whisper.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = BB46825A2D9002A100B5165D /* whisper.xcframework */; };
 		BB46825C2D9002A100B5165D /* whisper.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = BB46825A2D9002A100B5165D /* whisper.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		BB4682622D9002DE00B5165D /* ggml-base-q5_1.bin in Resources */ = {isa = PBXBuildFile; fileRef = BB46825F2D9002DE00B5165D /* ggml-base-q5_1.bin */; };
+		BB4682642D9088B800B5165D /* ggml-large-v3-turbo-q5_0.bin in Resources */ = {isa = PBXBuildFile; fileRef = BB4682632D9088B800B5165D /* ggml-large-v3-turbo-q5_0.bin */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -46,6 +47,7 @@
 /* Begin PBXFileReference section */
 		BB46825A2D9002A100B5165D /* whisper.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = whisper.xcframework; path = "../whisper.cpp/build-apple/whisper.xcframework"; sourceTree = "<group>"; };
 		BB46825F2D9002DE00B5165D /* ggml-base-q5_1.bin */ = {isa = PBXFileReference; lastKnownFileType = archive.macbinary; path = "ggml-base-q5_1.bin"; sourceTree = "<group>"; };
+		BB4682632D9088B800B5165D /* ggml-large-v3-turbo-q5_0.bin */ = {isa = PBXFileReference; lastKnownFileType = archive.macbinary; path = "ggml-large-v3-turbo-q5_0.bin"; sourceTree = "<group>"; };
 		BB71AE552D8E888000FC4CA0 /* YapNotes.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = YapNotes.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		BB71AE652D8E888100FC4CA0 /* YapNotesTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = YapNotesTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		BB71AE6F2D8E888100FC4CA0 /* YapNotesUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = YapNotesUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -119,6 +121,7 @@
 		BB4682602D9002DE00B5165D /* Models */ = {
 			isa = PBXGroup;
 			children = (
+				BB4682632D9088B800B5165D /* ggml-large-v3-turbo-q5_0.bin */,
 				BB46825F2D9002DE00B5165D /* ggml-base-q5_1.bin */,
 			);
 			path = Models;
@@ -276,6 +279,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				BB4682622D9002DE00B5165D /* ggml-base-q5_1.bin in Resources */,
+				BB4682642D9088B800B5165D /* ggml-large-v3-turbo-q5_0.bin in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

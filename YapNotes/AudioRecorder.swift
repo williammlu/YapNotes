@@ -17,10 +17,9 @@ actor AudioRecorder {
             AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue
         ]
 
-        #if !os(macOS)
         let session = AVAudioSession.sharedInstance()
         try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker])
-        #endif
+        try session.setActive(true)
 
         let newRecorder = try AVAudioRecorder(url: url, settings: settings)
         newRecorder.isMeteringEnabled = true

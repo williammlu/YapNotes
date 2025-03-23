@@ -36,6 +36,7 @@ struct RecordingView: View {
                     .frame(height: 120)
                     .padding(.bottom, 16)
 
+                // Record / Stop button
                 Button(action: {
                     Task {
                         await viewModel.toggleRecording()
@@ -51,14 +52,29 @@ struct RecordingView: View {
                     .foregroundColor(.white)
                     .padding(.bottom, 8)
 
-                if !viewModel.transcribedText.isEmpty {
-                    Text(viewModel.transcribedText)
-                        .foregroundColor(.white)
-                        .padding()
-                        .frame(maxWidth: .infinity)
-                        .background(Color.gray.opacity(0.2))
-                        .cornerRadius(10)
-                        .padding(.horizontal, 24)
+                if !viewModel.chunks.isEmpty {
+                    ScrollView {
+                        ForEach(viewModel.chunks) { chunk in
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Chunk #\(chunk.index) — \(String(format: "%.2f", chunk.duration))s")
+                                    .foregroundColor(.yellow)
+                                    .font(.subheadline)
+
+                                Text(chunk.text)
+                                    .foregroundColor(.white)
+                            }
+                            .padding()
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Color.gray.opacity(0.2))
+                            .cornerRadius(10)
+                            .padding(.horizontal, 24)
+                            .padding(.bottom, 4)
+                            // Tap gesture to play audio
+                            .onTapGesture {
+                                viewModel.playChunkAudio(chunk)
+                            }
+                        }
+                    }
                 }
 
                 Spacer()
