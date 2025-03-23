@@ -50,7 +50,8 @@ class RecordingViewModel: ObservableObject {
     // Unacceptable chunk outputs
     private let unacceptableOutputs: Set<String> = [
         "[BLANK_AUDIO]",
-        "[TYPING]"
+        "[TYPING]",
+        "[MUSIC]"
     ]
 
     init() {
@@ -81,7 +82,7 @@ class RecordingViewModel: ObservableObject {
             try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetooth])
             try session.setActive(true)
         } catch {
-            print("Error setting AVAudioSession category: \\(error)")
+            print("Error setting AVAudioSession category: \(error)")
         }
 
         engine = AVAudioEngine()
@@ -92,7 +93,7 @@ class RecordingViewModel: ObservableObject {
 
         // Store the engine's actual sample rate
         self.engineSampleRate = recordingFormat.sampleRate
-        print("AudioEngine sample rate: \\(engineSampleRate) Hz")
+        print("AudioEngine sample rate: \(engineSampleRate) Hz")
 
         // Install a tap to get audio data for amplitude, chunking, etc.
         inputNode.installTap(onBus: 0, bufferSize: 1024, format: recordingFormat) { buffer, _ in
@@ -138,7 +139,7 @@ class RecordingViewModel: ObservableObject {
 
                 // If enough silent frames + chunk is >= minChunkDuration, finalize
                 if self.silentFrameCount >= self.requiredSilenceFrames && chunkDuration >= self.minChunkDurationSec {
-                    print("Finalizing chunk due to silence of frame count #\\(self.silentFrameCount) and duration #\\(chunkDuration)")
+                    print("Finalizing chunk due to silence of frame count #\(self.silentFrameCount) and duration #\(chunkDuration)")
                     self.finalizeChunk(force: false)
                 }
             }
@@ -149,7 +150,7 @@ class RecordingViewModel: ObservableObject {
         do {
             try engine.start()
         } catch {
-            print("Could not start AVAudioEngine: \\(error)")
+            print("Could not start AVAudioEngine: \(error)")
         }
     }
 
@@ -193,11 +194,11 @@ class RecordingViewModel: ObservableObject {
             let fileURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
                 .appendingPathComponent("output.wav")
             do {
-                print("Starting recording on file \\(fileURL)")
+                print("Starting recording on file \(fileURL)")
                 try await recorder?.startRecording(toOutputFile: fileURL)
             } catch {
                 isRecording = false
-                print("Failed to start recording: \\(error)")
+                print("Failed to start recording: \(error)")
                 return
             }
 
@@ -218,7 +219,7 @@ class RecordingViewModel: ObservableObject {
         // Reset counters
         silentFrameCount = 0
 
-        print("Splitting chunk #\\(chunkIndex + 1) at \\(totalTime), chunk length: \\(duration)s")
+        print("Splitting chunk #\(chunkIndex + 1) at \(totalTime), chunk length: \(duration)s")
 
         if chunkHasSpeech {
             let idx = chunkIndex + 1
@@ -226,7 +227,7 @@ class RecordingViewModel: ObservableObject {
 
             // Save chunk to a .wav file so we can play it back
             let chunkFileURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-                .appendingPathComponent("chunk-\\(idx).wav")
+                .appendingPathComponent("chunk-\(idx).wav")
 
             do {
                 // Write with the REAL engine sample rate so playback is correct
@@ -236,7 +237,7 @@ class RecordingViewModel: ObservableObject {
                     sampleRate: Int32(engineSampleRate)
                 )
             } catch {
-                print("Error saving chunk to wav: \\(error)")
+                print("Error saving chunk to wav: \(error)")
             }
 
             // Transcribe on a background Task
@@ -256,7 +257,7 @@ class RecordingViewModel: ObservableObject {
                     .trimmingCharacters(in: .whitespacesAndNewlines)
 
                 // Filter out unacceptable or empty transcripts
-                if !rawChunkText.isEmpty && !unacceptableOutputs.contains(rawChunkText) {
+                if !rawChunkText.isEmpty && !unacceptableOutputs.contains(rawChunkText.uppercased()) {
                     let chunkInfo = ChunkInfo(
                         index: idx,
                         duration: duration,
@@ -267,12 +268,12 @@ class RecordingViewModel: ObservableObject {
                         self.chunks.append(chunkInfo)
                     }
                 } else {
-                    print("Skipping chunk #\\(idx) with text: \\(rawChunkText)")
+                    print("Skipping chunk #\(idx) with text: \(rawChunkText)")
                 }
                 self.isProcessing = false
             }
         } else {
-            print("Skipping chunk #\\(chunkIndex + 1) — all silence.")
+            print("Skipping chunk #\(chunkIndex + 1) — all silence.")
         }
 
         // Reset chunk-level tracking
@@ -283,7 +284,7 @@ class RecordingViewModel: ObservableObject {
     /// Playback any chunk
     func playChunkAudio(_ chunk: ChunkInfo) {
         guard let fileURL = chunk.fileURL else {
-            print("No fileURL for chunk #\\(chunk.index)")
+            print("No fileURL for chunk #\(chunk.index)")
             return
         }
         do {
@@ -291,7 +292,7 @@ class RecordingViewModel: ObservableObject {
             audioPlayer?.prepareToPlay()
             audioPlayer?.play()
         } catch {
-            print("Error playing chunk #\\(chunk.index): \\(error)")
+            print("Error playing chunk #\(chunk.index): \(error)")
         }
     }
 
