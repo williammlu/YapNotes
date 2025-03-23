@@ -37,7 +37,7 @@ class RecordingViewModel: ObservableObject {
     private var chunkIndex = 0
 
     // Silence / chunk rules
-    private let silenceThreshold: Float = 0.01
+    private let silenceThreshold: Float = 0.005
     private let requiredSilenceFrames = 10  // e.g., 10 consecutive quiet frames
     private let minChunkDurationSec: Double = 1.0
 
@@ -47,8 +47,15 @@ class RecordingViewModel: ObservableObject {
     // NEW: We store the actual sample rate from the engine
     private var engineSampleRate: Double = 16000.0 // default 16k, to be overridden
 
+    // Unacceptable chunk outputs
+    private let unacceptableOutputs: Set<String> = [
+        "[BLANK_AUDIO]",
+        "[TYPING]"
+    ]
+
     init() {
         loadLocalModel()
+        prepareAudio() // Eagerly prepare the audio engine so it doesn't lag
     }
 
     /// Load the smaller base model (ggml-base-q5_1)
@@ -65,6 +72,88 @@ class RecordingViewModel: ObservableObject {
         }
     }
 
+    /// Prepare the AVAudioSession, AVAudioEngine, etc. — but do not record yet.
+    private func prepareAudio() {
+        recorder = AudioRecorder()
+
+        let session = AVAudioSession.sharedInstance()
+        do {
+            try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetooth])
+            try session.setActive(true)
+        } catch {
+            print("Error setting AVAudioSession category: \\(error)")
+        }
+
+        engine = AVAudioEngine()
+        guard let engine = engine else { return }
+
+        let inputNode = engine.inputNode
+        let recordingFormat = inputNode.outputFormat(forBus: 0)
+
+        // Store the engine's actual sample rate
+        self.engineSampleRate = recordingFormat.sampleRate
+        print("AudioEngine sample rate: \\(engineSampleRate) Hz")
+
+        // Install a tap to get audio data for amplitude, chunking, etc.
+        inputNode.installTap(onBus: 0, bufferSize: 1024, format: recordingFormat) { buffer, _ in
+            let channelData = buffer.floatChannelData?[0]
+            let frameCount = Int(buffer.frameLength)
+            var sumAmplitude: Float = 0
+
+            var localBuffer = [Float](repeating: 0, count: frameCount)
+            if let channelData {
+                for i in 0..<frameCount {
+                    let val = channelData[i]
+                    sumAmplitude += abs(val)
+                    localBuffer[i] = val
+                }
+            }
+
+            let avgAmplitude = sumAmplitude / Float(frameCount)
+
+            // Update UI amplitude
+            Task { @MainActor in
+                self.currentAmplitude = CGFloat(avgAmplitude * 2.0)
+            }
+
+            // If we are recording, handle chunk logic
+            if self.isRecording {
+                // Mark chunkHasSpeech if amplitude above threshold
+                if avgAmplitude > self.silenceThreshold {
+                    self.chunkHasSpeech = true
+                }
+                // Accumulate samples
+                self.currentChunkSamples.append(contentsOf: localBuffer)
+
+                // Silence detection
+                if avgAmplitude < self.silenceThreshold {
+                    self.silentFrameCount += 1
+                } else {
+                    self.silentFrameCount = 0
+                }
+
+                // Check durations
+                let now = Date()
+                let chunkDuration = now.timeIntervalSince(self.chunkStartTime ?? now)
+
+                // If enough silent frames + chunk is >= minChunkDuration, finalize
+                if self.silentFrameCount >= self.requiredSilenceFrames && chunkDuration >= self.minChunkDurationSec {
+                    print("Finalizing chunk due to silence of frame count #\\(self.silentFrameCount) and duration #\\(chunkDuration)")
+                    self.finalizeChunk(force: false)
+                }
+            }
+        }
+
+        // Prepare and start the engine so it's "hot" immediately
+        engine.prepare()
+        do {
+            try engine.start()
+        } catch {
+            print("Could not start AVAudioEngine: \\(error)")
+        }
+    }
+
+    /// Toggle recording on/off
     func toggleRecording() async {
         guard let whisperContext else { return }
 
@@ -74,8 +163,6 @@ class RecordingViewModel: ObservableObject {
             audioTimer?.invalidate()
             audioTimer = nil
             await recorder?.stopRecording()
-            engine?.stop()
-            engine = nil
 
             // Possibly finalize leftover chunk
             if !currentChunkSamples.isEmpty {
@@ -106,92 +193,16 @@ class RecordingViewModel: ObservableObject {
             let fileURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
                 .appendingPathComponent("output.wav")
             do {
-                print("Starting recording on file \(fileURL)")
+                print("Starting recording on file \\(fileURL)")
                 try await recorder?.startRecording(toOutputFile: fileURL)
             } catch {
                 isRecording = false
-                print("Failed to start recording: \(error)")
+                print("Failed to start recording: \\(error)")
                 return
             }
 
             // Mark the start of the first chunk
             chunkStartTime = Date()
-            startAudioEngine()
-        }
-    }
-
-    private func startAudioEngine() {
-        engine = AVAudioEngine()
-        guard let engine = engine else { return }
-
-        // Attempt voiceChat mode for noise suppression
-        let session = AVAudioSession.sharedInstance()
-        do {
-            try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetooth])
-            try session.setActive(true)
-        } catch {
-            print("Error setting AVAudioSession category: \(error)")
-        }
-
-        let inputNode = engine.inputNode
-        let recordingFormat = inputNode.outputFormat(forBus: 0)
-
-        // Store the engine's actual sample rate
-        self.engineSampleRate = recordingFormat.sampleRate
-        print("AudioEngine sample rate: \(engineSampleRate) Hz")
-
-        inputNode.installTap(onBus: 0, bufferSize: 1024, format: recordingFormat) { buffer, _ in
-            let channelData = buffer.floatChannelData?[0]
-            let frameCount = Int(buffer.frameLength)
-            var sumAmplitude: Float = 0
-
-            var localBuffer = [Float](repeating: 0, count: frameCount)
-            if let channelData {
-                for i in 0..<frameCount {
-                    let val = channelData[i]
-                    sumAmplitude += abs(val)
-                    localBuffer[i] = val
-                }
-            }
-
-            let avgAmplitude = sumAmplitude / Float(frameCount)
-
-            // Update UI amplitude
-            Task { @MainActor in
-                self.currentAmplitude = CGFloat(avgAmplitude * 2.0)
-            }
-
-            // Mark chunkHasSpeech if amplitude above threshold
-            if avgAmplitude > self.silenceThreshold {
-                // print("Speech detected")
-                self.chunkHasSpeech = true
-            }
-
-            // Accumulate samples
-            self.currentChunkSamples.append(contentsOf: localBuffer)
-
-            // Silence detection
-            if avgAmplitude < self.silenceThreshold {
-                self.silentFrameCount += 1
-            } else {
-                self.silentFrameCount = 0
-            }
-
-            // Check durations
-            let now = Date()
-            let chunkDuration = now.timeIntervalSince(self.chunkStartTime ?? now)
-
-            // If enough silent frames + chunk is >= minChunkDuration, finalize
-            if self.silentFrameCount >= self.requiredSilenceFrames && chunkDuration >= self.minChunkDurationSec {
-                print("Finalizing chunk due to silence of frame count #\(self.silentFrameCount) and duration #\(chunkDuration)")
-                self.finalizeChunk(force: false)
-            }
-        }
-
-        do {
-            try engine.start()
-        } catch {
-            print("Could not start AVAudioEngine: \(error)")
         }
     }
 
@@ -207,7 +218,7 @@ class RecordingViewModel: ObservableObject {
         // Reset counters
         silentFrameCount = 0
 
-        print("Splitting chunk #\(chunkIndex + 1) at \(totalTime), chunk length: \(duration)s")
+        print("Splitting chunk #\\(chunkIndex + 1) at \\(totalTime), chunk length: \\(duration)s")
 
         if chunkHasSpeech {
             let idx = chunkIndex + 1
@@ -215,7 +226,7 @@ class RecordingViewModel: ObservableObject {
 
             // Save chunk to a .wav file so we can play it back
             let chunkFileURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-                .appendingPathComponent("chunk-\(idx).wav")
+                .appendingPathComponent("chunk-\\(idx).wav")
 
             do {
                 // Write with the REAL engine sample rate so playback is correct
@@ -225,7 +236,7 @@ class RecordingViewModel: ObservableObject {
                     sampleRate: Int32(engineSampleRate)
                 )
             } catch {
-                print("Error saving chunk to wav: \(error)")
+                print("Error saving chunk to wav: \\(error)")
             }
 
             // Transcribe on a background Task
@@ -240,27 +251,28 @@ class RecordingViewModel: ObservableObject {
                 let downsampled = self.downsampleTo16k(samples: chunkSamples, inputRate: engineSampleRate)
 
                 await whisperContext.fullTranscribe(samples: downsampled)
-                let chunkText = await whisperContext
+                let rawChunkText = await whisperContext
                     .getTranscription()
                     .trimmingCharacters(in: .whitespacesAndNewlines)
 
-                if !chunkText.isEmpty {
+                // Filter out unacceptable or empty transcripts
+                if !rawChunkText.isEmpty && !unacceptableOutputs.contains(rawChunkText) {
                     let chunkInfo = ChunkInfo(
                         index: idx,
                         duration: duration,
-                        text: chunkText,
+                        text: rawChunkText,
                         fileURL: chunkFileURL
                     )
                     await MainActor.run {
                         self.chunks.append(chunkInfo)
                     }
                 } else {
-                    print("Chunk #\(idx) had speech but no text output.")
+                    print("Skipping chunk #\\(idx) with text: \\(rawChunkText)")
                 }
                 self.isProcessing = false
             }
         } else {
-            print("Skipping chunk #\(chunkIndex + 1) — all silence.")
+            print("Skipping chunk #\\(chunkIndex + 1) — all silence.")
         }
 
         // Reset chunk-level tracking
@@ -271,7 +283,7 @@ class RecordingViewModel: ObservableObject {
     /// Playback any chunk
     func playChunkAudio(_ chunk: ChunkInfo) {
         guard let fileURL = chunk.fileURL else {
-            print("No fileURL for chunk #\(chunk.index)")
+            print("No fileURL for chunk #\\(chunk.index)")
             return
         }
         do {
@@ -279,7 +291,7 @@ class RecordingViewModel: ObservableObject {
             audioPlayer?.prepareToPlay()
             audioPlayer?.play()
         } catch {
-            print("Error playing chunk #\(chunk.index): \(error)")
+            print("Error playing chunk #\\(chunk.index): \\(error)")
         }
     }
 
@@ -301,8 +313,10 @@ class RecordingViewModel: ObservableObject {
         sampleRate: Int32
     ) throws {
         // Convert Float -> Int16
-        let int16Samples = samples.map { Int16($0 * Float(Int16.max)) }
-
+        let int16Samples = samples.map { sample -> Int16 in
+            let clamped = max(-1.0, min(1.0, sample))
+            return Int16(clamped * Float(Int16.max))
+        }
         // WAV header fields
         let numChannels: Int16 = 1
         let bitsPerSample: Int16 = 16
@@ -342,6 +356,7 @@ class RecordingViewModel: ObservableObject {
 
         try data.write(to: fileURL)
     }
+
     // MARK: - Downsample to 16k
 
     /// Very simple downsampling: picks every (inputRate/16000)th sample
