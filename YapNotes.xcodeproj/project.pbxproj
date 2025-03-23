@@ -6,6 +6,12 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		BB46825B2D9002A100B5165D /* whisper.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = BB46825A2D9002A100B5165D /* whisper.xcframework */; };
+		BB46825C2D9002A100B5165D /* whisper.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = BB46825A2D9002A100B5165D /* whisper.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		BB4682622D9002DE00B5165D /* ggml-base-q5_1.bin in Resources */ = {isa = PBXBuildFile; fileRef = BB46825F2D9002DE00B5165D /* ggml-base-q5_1.bin */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		BB71AE662D8E888100FC4CA0 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -23,15 +29,44 @@
 		};
 /* End PBXContainerItemProxy section */
 
+/* Begin PBXCopyFilesBuildPhase section */
+		BB46825D2D9002A100B5165D /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+				BB46825C2D9002A100B5165D /* whisper.xcframework in Embed Frameworks */,
+			);
+			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
+		BB46825A2D9002A100B5165D /* whisper.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = whisper.xcframework; path = "../whisper.cpp/build-apple/whisper.xcframework"; sourceTree = "<group>"; };
+		BB46825F2D9002DE00B5165D /* ggml-base-q5_1.bin */ = {isa = PBXFileReference; lastKnownFileType = archive.macbinary; path = "ggml-base-q5_1.bin"; sourceTree = "<group>"; };
 		BB71AE552D8E888000FC4CA0 /* YapNotes.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = YapNotes.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		BB71AE652D8E888100FC4CA0 /* YapNotesTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = YapNotesTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		BB71AE6F2D8E888100FC4CA0 /* YapNotesUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = YapNotesUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		BB4682582D90027D00B5165D /* Exceptions for "YapNotes" folder in "YapNotes" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = BB71AE542D8E888000FC4CA0 /* YapNotes */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		BB71AE572D8E888000FC4CA0 /* YapNotes */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				BB4682582D90027D00B5165D /* Exceptions for "YapNotes" folder in "YapNotes" target */,
+			);
 			path = YapNotes;
 			sourceTree = "<group>";
 		};
@@ -52,6 +87,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				BB46825B2D9002A100B5165D /* whisper.xcframework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -72,13 +108,39 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		BB4682592D9002A100B5165D /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				BB46825A2D9002A100B5165D /* whisper.xcframework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		BB4682602D9002DE00B5165D /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				BB46825F2D9002DE00B5165D /* ggml-base-q5_1.bin */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		BB4682612D9002DE00B5165D /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				BB4682602D9002DE00B5165D /* Models */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
 		BB71AE4C2D8E888000FC4CA0 = {
 			isa = PBXGroup;
 			children = (
 				BB71AE572D8E888000FC4CA0 /* YapNotes */,
 				BB71AE682D8E888100FC4CA0 /* YapNotesTests */,
 				BB71AE722D8E888100FC4CA0 /* YapNotesUITests */,
+				BB4682592D9002A100B5165D /* Frameworks */,
 				BB71AE562D8E888000FC4CA0 /* Products */,
+				BB4682612D9002DE00B5165D /* Resources */,
 			);
 			sourceTree = "<group>";
 		};
@@ -102,6 +164,7 @@
 				BB71AE512D8E888000FC4CA0 /* Sources */,
 				BB71AE522D8E888000FC4CA0 /* Frameworks */,
 				BB71AE532D8E888000FC4CA0 /* Resources */,
+				BB46825D2D9002A100B5165D /* Embed Frameworks */,
 			);
 			buildRules = (
 			);
@@ -212,6 +275,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				BB4682622D9002DE00B5165D /* ggml-base-q5_1.bin in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
