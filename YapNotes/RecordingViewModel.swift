@@ -1,7 +1,7 @@
 import SwiftUI
 import AVFoundation
 
-struct ChunkInfo: Identifiable {
+struct ChunkInfo: Identifiable, Equatable {
     let id = UUID()
     let index: Int
     let duration: Double
@@ -18,8 +18,11 @@ class RecordingViewModel: ObservableObject {
     // We store chunk objects (with duration, text, and fileURL)
     @Published var chunks: [ChunkInfo] = []
 
-    // Real-time amplitude for waveform
+    // Real-time amplitude for old single-line waveform
     @Published var currentAmplitude: CGFloat = 0.0
+
+    // NEW: We store multiple bar amplitudes for the bar waveform
+    @Published var barAmplitudes: [CGFloat] = Array(repeating: 0, count: 20)
 
     private var recorder: AudioRecorder?
     private var whisperContext: WhisperContext?
@@ -44,8 +47,8 @@ class RecordingViewModel: ObservableObject {
     // For logging total record time
     private var recordingStart: Date?
 
-    // NEW: We store the actual sample rate from the engine
-    private var engineSampleRate: Double = 16000.0 // default 16k, to be overridden
+    // We store the actual sample rate from the engine
+    private var engineSampleRate: Double = 16000.0 // default 16k, overridden later
 
     // Unacceptable chunk outputs
     private let unacceptableOutputs: Set<String> = [
@@ -56,7 +59,7 @@ class RecordingViewModel: ObservableObject {
 
     init() {
         loadLocalModel()
-        prepareAudio() // Eagerly prepare the audio engine so it doesn't lag
+        prepareAudio()
     }
 
     /// Load the smaller base model (ggml-base-q5_1)
@@ -97,33 +100,52 @@ class RecordingViewModel: ObservableObject {
 
         // Install a tap to get audio data for amplitude, chunking, etc.
         inputNode.installTap(onBus: 0, bufferSize: 1024, format: recordingFormat) { buffer, _ in
-            let channelData = buffer.floatChannelData?[0]
+            guard let channelData = buffer.floatChannelData?[0] else { return }
             let frameCount = Int(buffer.frameLength)
+
+            // 1) Compute a single overall amplitude for “old” wave
             var sumAmplitude: Float = 0
-
-            var localBuffer = [Float](repeating: 0, count: frameCount)
-            if let channelData {
-                for i in 0..<frameCount {
-                    let val = channelData[i]
-                    sumAmplitude += abs(val)
-                    localBuffer[i] = val
-                }
+            for i in 0..<frameCount {
+                sumAmplitude += abs(channelData[i])
             }
-
             let avgAmplitude = sumAmplitude / Float(frameCount)
 
-            // Update UI amplitude
+            // 2) Compute 40-bar amplitudes
+            let numberOfBars = 40
+            let binSize = max(frameCount / numberOfBars, 1)
+            var barValues = [Float](repeating: 0, count: numberOfBars)
+
+            for barIndex in 0..<numberOfBars {
+                let startIdx = barIndex * binSize
+                let endIdx = min(startIdx + binSize, frameCount)
+                var sumBin: Float = 0
+                for j in startIdx..<endIdx {
+                    sumBin += abs(channelData[j])
+                }
+                let count = Float(endIdx - startIdx)
+                let barAmplitude = sumBin / max(count, 1)
+                barValues[barIndex] = barAmplitude
+            }
+
+            // Update UI on main thread
             Task { @MainActor in
+                // Scale them up a bit if needed; tweak factor to taste
+                self.barAmplitudes = barValues.map { CGFloat($0 * 1.0) }
                 self.currentAmplitude = CGFloat(avgAmplitude * 2.0)
             }
 
-            // If we are recording, handle chunk logic
+            // 3) If we are recording, handle chunk logic
             if self.isRecording {
                 // Mark chunkHasSpeech if amplitude above threshold
                 if avgAmplitude > self.silenceThreshold {
                     self.chunkHasSpeech = true
                 }
+
                 // Accumulate samples
+                var localBuffer = [Float](repeating: 0, count: frameCount)
+                for i in 0..<frameCount {
+                    localBuffer[i] = channelData[i]
+                }
                 self.currentChunkSamples.append(contentsOf: localBuffer)
 
                 // Silence detection
@@ -145,7 +167,7 @@ class RecordingViewModel: ObservableObject {
             }
         }
 
-        // Prepare and start the engine so it's "hot" immediately
+        // Prepare and start the engine so it's “hot” immediately
         engine.prepare()
         do {
             try engine.start()
@@ -170,7 +192,7 @@ class RecordingViewModel: ObservableObject {
                 finalizeChunk(force: true)
             }
 
-            // Combine chunk texts if you want a single final transcript
+            // Combine chunk texts into a single final transcript
             let allTexts = chunks.map { $0.text }
             transcribedText = allTexts.joined(separator: " ")
 
