@@ -1,7 +1,7 @@
 import SwiftUI
 import AVFoundation
 
-struct ChunkInfo: Identifiable, Equatable {
+struct YapInfo: Identifiable, Equatable {
     let id = UUID()
     let index: Int
     let duration: Double
@@ -15,8 +15,8 @@ class RecordingViewModel: ObservableObject {
     @Published var isProcessing = false
     @Published var transcribedText = ""
 
-    // We store chunk objects (with duration, text, and fileURL)
-    @Published var chunks: [ChunkInfo] = []
+    // We store yap objects (with duration, text, and fileURL)
+    @Published var yaps: [YapInfo] = []
 
     // Real-time amplitude for old single-line waveform
     @Published var currentAmplitude: CGFloat = 0.0
@@ -33,11 +33,11 @@ class RecordingViewModel: ObservableObject {
     private var audioPlayer: AVAudioPlayer?
 
     // Chunking properties
-    private var currentChunkSamples = [Float]()
+    private var currentYapSamples = [Float]()
     private var silentFrameCount = 0
-    private var chunkHasSpeech = false
-    private var chunkStartTime: Date?
-    private var chunkIndex = 0
+    private var yapHasSpeech = false
+    private var yapStartTime: Date?
+    private var yapIndex = 0
 
     // Silence / chunk rules
     private let silenceThreshold: Float = 0.005
@@ -49,13 +49,6 @@ class RecordingViewModel: ObservableObject {
 
     // We store the actual sample rate from the engine
     private var engineSampleRate: Double = 16000.0 // default 16k, overridden later
-
-    // Unacceptable chunk outputs
-    private let unacceptableOutputs: Set<String> = [
-        "[BLANK_AUDIO]",
-        "[TYPING]",
-        "[MUSIC]"
-    ]
 
     init() {
         loadLocalModel()
@@ -136,9 +129,9 @@ class RecordingViewModel: ObservableObject {
 
             // 3) If we are recording, handle chunk logic
             if self.isRecording {
-                // Mark chunkHasSpeech if amplitude above threshold
+                // Mark yapHasSpeech if amplitude above threshold
                 if avgAmplitude > self.silenceThreshold {
-                    self.chunkHasSpeech = true
+                    self.yapHasSpeech = true
                 }
 
                 // Accumulate samples
@@ -146,7 +139,7 @@ class RecordingViewModel: ObservableObject {
                 for i in 0..<frameCount {
                     localBuffer[i] = channelData[i]
                 }
-                self.currentChunkSamples.append(contentsOf: localBuffer)
+                self.currentYapSamples.append(contentsOf: localBuffer)
 
                 // Silence detection
                 if avgAmplitude < self.silenceThreshold {
@@ -157,12 +150,12 @@ class RecordingViewModel: ObservableObject {
 
                 // Check durations
                 let now = Date()
-                let chunkDuration = now.timeIntervalSince(self.chunkStartTime ?? now)
+                let chunkDuration = now.timeIntervalSince(self.yapStartTime ?? now)
 
                 // If enough silent frames + chunk is >= minChunkDuration, finalize
                 if self.silentFrameCount >= self.requiredSilenceFrames && chunkDuration >= self.minChunkDurationSec {
-                    print("Finalizing chunk due to silence of frame count #\(self.silentFrameCount) and duration #\(chunkDuration)")
-                    self.finalizeChunk(force: false)
+                    print("Finalizing yap due to silence of frame count #\(self.silentFrameCount) and duration #\(chunkDuration)")
+                    self.finalizeYap(force: false)
                 }
             }
         }
@@ -187,24 +180,24 @@ class RecordingViewModel: ObservableObject {
             audioTimer = nil
             await recorder?.stopRecording()
 
-            // Possibly finalize leftover chunk
-            if !currentChunkSamples.isEmpty {
-                finalizeChunk(force: true)
+            // Possibly finalize leftover yap
+            if !currentYapSamples.isEmpty {
+                finalizeYap(force: true)
             }
 
-            // Combine chunk texts into a single final transcript
-            let allTexts = chunks.map { $0.text }
+            // Combine yap texts into a single final transcript
+            let allTexts = yaps.map { $0.text }
             transcribedText = allTexts.joined(separator: " ")
 
         } else {
             // Start recording
             isRecording = true
             transcribedText = ""
-            chunks.removeAll()
-            currentChunkSamples.removeAll()
+            yaps.removeAll()
+            currentYapSamples.removeAll()
             silentFrameCount = 0
-            chunkHasSpeech = false
-            chunkIndex = 0
+            yapHasSpeech = false
+            yapIndex = 0
 
             // Track total record time
             recordingStart = Date()
@@ -224,89 +217,89 @@ class RecordingViewModel: ObservableObject {
                 return
             }
 
-            // Mark the start of the first chunk
-            chunkStartTime = Date()
+            // Mark the start of the first yap
+            yapStartTime = Date()
         }
     }
 
-    private func finalizeChunk(force: Bool) {
+    private func finalizeYap(force: Bool) {
         let now = Date()
-        let duration = now.timeIntervalSince(chunkStartTime ?? now)
+        let duration = now.timeIntervalSince(yapStartTime ?? now)
         let totalTime = timeStringSinceRecordingBegan()
 
-        // Copy samples for this chunk
-        let chunkSamples = currentChunkSamples
-        currentChunkSamples.removeAll()
+        // Copy samples for this yap
+        let yapSamples = currentYapSamples
+        currentYapSamples.removeAll()
 
         // Reset counters
         silentFrameCount = 0
 
-        print("Splitting chunk #\(chunkIndex + 1) at \(totalTime), chunk length: \(duration)s")
+        print("Splitting yap #\(yapIndex + 1) at \(totalTime), yap length: \(duration)s")
 
-        if chunkHasSpeech {
-            let idx = chunkIndex + 1
-            chunkIndex += 1
+        if yapHasSpeech {
+            let idx = yapIndex + 1
 
-            // Save chunk to a .wav file so we can play it back
-            let chunkFileURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-                .appendingPathComponent("chunk-\(idx).wav")
+            // Save yap to a .wav file so we can play it back
+            let yapFileURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+                .appendingPathComponent("yap-\(idx).wav")
 
             do {
                 // Write with the REAL engine sample rate so playback is correct
                 try savePCMToWav(
-                    chunkSamples,
-                    fileURL: chunkFileURL,
+                    yapSamples,
+                    fileURL: yapFileURL,
                     sampleRate: Int32(engineSampleRate)
                 )
             } catch {
-                print("Error saving chunk to wav: \(error)")
+                print("Error saving yap to wav: \(error)")
             }
 
             // Transcribe on a background Task
             Task {
                 self.isProcessing = true
-                guard let whisperContext, !chunkSamples.isEmpty else {
+                guard let whisperContext, !yapSamples.isEmpty else {
                     self.isProcessing = false
                     return
                 }
 
                 // Downsample to 16k for Whisper
-                let downsampled = self.downsampleTo16k(samples: chunkSamples, inputRate: engineSampleRate)
+                let downsampled = self.downsampleTo16k(samples: yapSamples, inputRate: engineSampleRate)
 
                 await whisperContext.fullTranscribe(samples: downsampled)
-                let rawChunkText = await whisperContext
+                let rawYapText = await whisperContext
                     .getTranscription()
                     .trimmingCharacters(in: .whitespacesAndNewlines)
 
                 // Filter out unacceptable or empty transcripts
-                if !rawChunkText.isEmpty && !unacceptableOutputs.contains(rawChunkText.uppercased()) {
-                    let chunkInfo = ChunkInfo(
+                if !rawYapText.isEmpty && !isUnacceptableOutput(rawYapText) {
+                    let yapInfo = YapInfo(
                         index: idx,
                         duration: duration,
-                        text: rawChunkText,
-                        fileURL: chunkFileURL
+                        text: rawYapText,
+                        fileURL: yapFileURL
                     )
                     await MainActor.run {
-                        self.chunks.append(chunkInfo)
+                        self.yaps.append(yapInfo)
                     }
+                    yapIndex += 1 // Increment yap index only if the yap is valid
                 } else {
-                    print("Skipping chunk #\(idx) with text: \(rawChunkText)")
+                    print("Skipping yap #\(idx) with text: \(rawYapText)")
                 }
                 self.isProcessing = false
             }
         } else {
-            print("Skipping chunk #\(chunkIndex + 1) — all silence.")
+            print("Skipping yap #\(yapIndex + 1) — all silence.")
         }
 
-        // Reset chunk-level tracking
-        chunkStartTime = Date()
-        chunkHasSpeech = false
+        // Reset yap-level tracking
+        yapStartTime = Date()
+        yapHasSpeech = false
     }
 
-    /// Playback any chunk
-    func playChunkAudio(_ chunk: ChunkInfo) {
-        guard let fileURL = chunk.fileURL else {
-            print("No fileURL for chunk #\(chunk.index)")
+    /// Playback any yap
+    func playYapAudio(_ yap: YapInfo) {
+        guard let fileURL = yap.fileURL else {
+            print("No fileURL for yap #\(yap.index)")
             return
         }
         do {
@@ -314,7 +307,7 @@ class RecordingViewModel: ObservableObject {
             audioPlayer?.prepareToPlay()
             audioPlayer?.play()
         } catch {
-            print("Error playing chunk #\(chunk.index): \(error)")
+            print("Error playing yap #\(yap.index): \(error)")
         }
     }
 
@@ -409,5 +402,13 @@ class RecordingViewModel: ObservableObject {
 
     private func int32ToBytes(_ value: Int32) -> [UInt8] {
         withUnsafeBytes(of: value.littleEndian, Array.init)
+    }
+
+    private func isUnacceptableOutput(_ text: String) -> Bool {
+        let pattern = "^\\[.{0,18}\\]$"
+        if let _ = text.range(of: pattern, options: .regularExpression) {
+            return true
+        }
+        return false
     }
 }
