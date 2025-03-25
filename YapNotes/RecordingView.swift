@@ -1,6 +1,5 @@
 import SwiftUI
 import UniformTypeIdentifiers
-import AssetsLibrary
 
 struct RecordingView: View {
     @StateObject private var viewModel = RecordingViewModel()
@@ -15,9 +14,10 @@ struct RecordingView: View {
     @State private var showShareSheet = false
     @State private var shareItems: [Any] = []
 
-    // MARK: - Doggy Icon Name
-    // Picks which doggy-sound-X to use based on the current amplitude.
-    // Thresholds: 0.05 => doggy-sound-1, 0.1 => doggy-sound-2, 0.2 => doggy-sound-3.
+    // For showing the session sidebar
+    @State private var showSidebar = false
+
+    // Doggy icon based on amplitude (example)
     private var doggyIconName: String {
         let amplitude = viewModel.currentAmplitude
         if amplitude < 0.02 {
@@ -33,18 +33,21 @@ struct RecordingView: View {
 
     var body: some View {
         ZStack {
-            Color.green
+            Color.orange
                 .ignoresSafeArea()
 
             VStack(spacing: 10) {
                 // -- Top row of buttons with the doggy icon in the middle --
                 HStack {
-                    Button(action: {}) {
+                    Button(action: {
+                        // Show the sidebar with past sessions
+                        showSidebar = true
+                    }) {
                         Image(systemName: "folder")
                             .font(.title)
                             .foregroundColor(.white)
-//                            .colorInvert()
                     }
+
                     Spacer()
                     // Doggy icon in the center
                     Image(doggyIconName)
@@ -52,10 +55,10 @@ struct RecordingView: View {
                         .scaledToFit()
                         .foregroundColor(.white)
                         .colorInvert()
-                        .frame(width: 100, height: 100) // adjust size as you like
-                    
+                        .frame(width: 100, height: 100)
+
                     Spacer()
-                    
+
                     Button(action: {}) {
                         Image(systemName: "gearshape")
                             .font(.title)
@@ -64,13 +67,13 @@ struct RecordingView: View {
                 }
                 .padding([.leading, .trailing, .top], 24)
 
-                // -- Scrollable single text view with all yaps concatenated --
+                // -- Single text view with all joined text (if you like)
                 ScrollView {
                     Text(allYapsConcatenated)
                         .foregroundColor(.white)
                         .padding()
                 }
-                .frame(maxHeight: .infinity) // Fill available space
+                .frame(maxHeight: .infinity)
 
                 // -- Histogram bars --
                 BarWaveformView(
@@ -79,10 +82,10 @@ struct RecordingView: View {
                 )
                 .frame(height: maxBarHeight)
 
-                // -- some space before yap list --
+                // -- some space before yaps list --
                 Spacer().frame(height: 10)
 
-                // -- Scrollable yap list with auto-scroll logic --
+                // -- Scrollable yaps with auto-scroll --
                 ScrollViewReader { proxy in
                     ScrollView(showsIndicators: true) {
                         if !viewModel.yaps.isEmpty {
@@ -101,22 +104,18 @@ struct RecordingView: View {
                                 .cornerRadius(10)
                                 .padding(.horizontal, 24)
                                 .padding(.bottom, 4)
-                                .id(yap.id) // So we can scroll to this yap
-                                // Tap gesture to play audio yap
+                                .id(yap.id)
                                 .onTapGesture {
                                     viewModel.playYapAudio(yap)
                                 }
-                                // 1) Long-press for Copy & Share
                                 .contextMenu {
                                     Button {
-                                        // Copy to clipboard
                                         UIPasteboard.general.string = yap.text
                                     } label: {
                                         Label("Copy", systemImage: "doc.on.doc")
                                     }
 
                                     Button {
-                                        // Show share sheet with yap text
                                         shareItems = [yap.text]
                                         showShareSheet = true
                                     } label: {
@@ -130,7 +129,7 @@ struct RecordingView: View {
                                 .padding()
                         }
 
-                        // Show "Processing" text under the last yap if processing
+                        // If processing, show message
                         if viewModel.isProcessing {
                             Text("Processing")
                                 .foregroundColor(.white)
@@ -141,29 +140,15 @@ struct RecordingView: View {
                                 .id("PROCESSING")
                         }
 
-                        // Bottom spacer – we track its offset to see if user is near bottom
                         Spacer().frame(height: 120).id("BOTTOM")
-
-                        // Attach a preference so we know the vertical offset
-                        Color.clear
-                            .frame(height: 1)
-                            .background(GeometryReader { geo in
-                                Color.clear
-                                    .preference(key: BottomOffsetPreferenceKey.self,
-                                                value: geo.frame(in: .global).minY)
-                            })
                     }
                     .onPreferenceChange(BottomOffsetPreferenceKey.self) { newOffset in
-                        // This is a simplistic check: if newOffset is near the bottom
-                        // of the screen, assume user is scrolled down.
                         let screenHeight = UIScreen.main.bounds.height
                         let threshold = screenHeight * 1.2
-
                         userHasScrolledUp = (newOffset < -threshold)
                     }
                     .onChange(of: viewModel.yaps) { _ in
-                        // Whenever new yaps arrive, if user is not scrolled up, jump to bottom
-                        if (!userHasScrolledUp) {
+                        if !userHasScrolledUp {
                             DispatchQueue.main.async {
                                 withAnimation {
                                     proxy.scrollTo("BOTTOM", anchor: .bottom)
@@ -184,11 +169,11 @@ struct RecordingView: View {
                         Circle()
                             .fill(viewModel.isRecording ? Color.white : Color.red)
                             .frame(width: 70, height: 70)
-                        // Outer border circle (2px gap => 4 px bigger diameter)
+                        // Outer border circle
                         Circle()
                             .stroke(Color.white, lineWidth: 2)
                             .frame(width: 74, height: 74)
-                        // Pause icon when recording
+                        // Pause icon if recording
                         if viewModel.isRecording {
                             Image(systemName: "pause.fill")
                                 .foregroundColor(.red)
@@ -196,29 +181,31 @@ struct RecordingView: View {
                         }
                     }
                     .onTapGesture {
-                        // Continue recording along same list
                         Task {
                             await viewModel.toggleRecording()
                         }
                     }
                     Spacer()
                 }
-                .padding(.bottom, 32) // Adjust as desired
+                .padding(.bottom, 32)
             }
         }
         // Display share sheet
         .sheet(isPresented: $showShareSheet) {
             ActivityViewControllerWrapper(activityItems: shareItems)
         }
+        // Sidebar for sessions
+        .sheet(isPresented: $showSidebar) {
+            SessionSidebarView()
+        }
     }
 
-    // Helper: join all yaps’ text into one big string
     private var allYapsConcatenated: String {
         viewModel.yaps.map { $0.text }.joined(separator: " ")
     }
 }
 
-// MARK: - BarWaveformView with top corners rounded
+// MARK: - BarWaveformView (unchanged)
 struct BarWaveformView: View {
     let barAmplitudes: [CGFloat]
     let maxBarHeight: CGFloat
@@ -232,15 +219,11 @@ struct BarWaveformView: View {
             let barWidth = availableWidth / CGFloat(barCount)
 
             VStack(spacing: 0) {
-                Spacer() // push bars to the bottom
-
+                Spacer()
                 HStack(alignment: .bottom, spacing: spacing) {
                     ForEach(0..<barCount, id: \.self) { i in
                         let amplitude = barAmplitudes[i]
-                        // Example scaling: sqrt() to compress high amplitudes
                         let scaledHeight = min(sqrt(amplitude) * maxBarHeight, maxBarHeight)
-
-                        // Rounded top corners: 3px
                         RoundedCorners(radius: 3, corners: [.topLeft, .topRight])
                             .fill(Color.white)
                             .frame(width: barWidth, height: scaledHeight)
@@ -251,7 +234,7 @@ struct BarWaveformView: View {
     }
 }
 
-// MARK: - A Shape for rounding only top corners
+// MARK: - Rounding shape
 struct RoundedCorners: Shape {
     var radius: CGFloat
     var corners: UIRectCorner
@@ -266,7 +249,7 @@ struct RoundedCorners: Shape {
     }
 }
 
-// MARK: - Preference Key to track scroll offset
+// MARK: - Preference Key
 struct BottomOffsetPreferenceKey: PreferenceKey {
     static var defaultValue: CGFloat = 0
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
@@ -274,16 +257,13 @@ struct BottomOffsetPreferenceKey: PreferenceKey {
     }
 }
 
-// MARK: - Share Sheet Wrapper
+// MARK: - Share Sheet
 struct ActivityViewControllerWrapper: UIViewControllerRepresentable {
     let activityItems: [Any]
 
     func makeUIViewController(context: Context) -> UIActivityViewController {
-        let controller = UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
-        return controller
+        UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
     }
 
-    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {
-        // nothing
-    }
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
