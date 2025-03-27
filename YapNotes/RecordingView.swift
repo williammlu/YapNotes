@@ -4,20 +4,18 @@ import UniformTypeIdentifiers
 struct RecordingView: View {
     @StateObject private var viewModel = RecordingViewModel()
 
-    // Adjust as needed
     let maxBarHeight: CGFloat = 200.0
+
+    // Control the visibility of our custom side menus
+    @State private var showLeftMenu = false
+    @State private var showRightMenu = false
 
     // Tracks whether user is intentionally scrolled up (so we don’t auto-scroll)
     @State private var userHasScrolledUp = false
-
-    // For share sheet
     @State private var showShareSheet = false
     @State private var shareItems: [Any] = []
 
-    // For showing the session sidebar
-    @State private var showSidebar = false
-
-    // Doggy icon based on amplitude (example)
+    // Doggy icon
     private var doggyIconName: String {
         let amplitude = viewModel.currentAmplitude
         if amplitude < 0.02 {
@@ -31,17 +29,62 @@ struct RecordingView: View {
         }
     }
 
+    // The main content offset X based on side menus
+    private var mainContentOffsetX: CGFloat {
+        if showLeftMenu { 
+            // Slide right to reveal left menu
+            return 250 
+        } else if showRightMenu {
+            // Slide left to reveal right settings
+            return -250
+        } else {
+            return 0
+        }
+    }
+
     var body: some View {
+        ZStack(alignment: .leading) {
+            // Left side menu (SessionSidebarView)
+            SessionSidebarView(
+                onSessionClose: {
+                    withAnimation { showLeftMenu = false }
+                }
+            )
+            .frame(width: 250)
+            .offset(x: showLeftMenu ? 0 : -250)
+
+            // Right side menu (SettingsView)
+            HStack {
+                Spacer()
+                SettingsView(onClose: {
+                    withAnimation { showRightMenu = false }
+                })
+                .frame(width: 250)
+                .offset(x: showRightMenu ? 0 : 250)
+            }
+
+            // Main content
+            mainRecordingContent
+                .offset(x: mainContentOffsetX)
+                .animation(.easeOut, value: showLeftMenu)
+                .animation(.easeOut, value: showRightMenu)
+        }
+    }
+
+    private var mainRecordingContent: some View {
         ZStack {
             Color.orange
                 .ignoresSafeArea()
 
             VStack(spacing: 10) {
-                // -- Top row of buttons with the doggy icon in the middle --
+                // Top row
                 HStack {
                     Button(action: {
-                        // Show the sidebar with past sessions
-                        showSidebar = true
+                        // Toggle the left menu
+                        withAnimation {
+                            showLeftMenu.toggle()
+                            showRightMenu = false
+                        }
                     }) {
                         Image(systemName: "folder")
                             .font(.title)
@@ -49,7 +92,7 @@ struct RecordingView: View {
                     }
 
                     Spacer()
-                    // Doggy icon in the center
+
                     Image(doggyIconName)
                         .resizable()
                         .scaledToFit()
@@ -59,7 +102,12 @@ struct RecordingView: View {
 
                     Spacer()
 
-                    Button(action: {}) {
+                    Button(action: {
+                        withAnimation {
+                            showRightMenu.toggle()
+                            showLeftMenu = false
+                        }
+                    }) {
                         Image(systemName: "gearshape")
                             .font(.title)
                             .foregroundColor(.red)
@@ -67,7 +115,7 @@ struct RecordingView: View {
                 }
                 .padding([.leading, .trailing, .top], 24)
 
-                // -- Single text view with all joined text (if you like)
+                // Single text with all joined text
                 ScrollView {
                     Text(allYapsConcatenated)
                         .foregroundColor(.white)
@@ -75,17 +123,16 @@ struct RecordingView: View {
                 }
                 .frame(maxHeight: .infinity)
 
-                // -- Histogram bars --
+                // Histogram bars
                 BarWaveformView(
                     barAmplitudes: viewModel.barAmplitudes,
                     maxBarHeight: maxBarHeight
                 )
                 .frame(height: maxBarHeight)
 
-                // -- some space before yaps list --
                 Spacer().frame(height: 10)
 
-                // -- Scrollable yaps with auto-scroll --
+                // Scrollable yaps with auto-scroll
                 ScrollViewReader { proxy in
                     ScrollView(showsIndicators: true) {
                         if !viewModel.yaps.isEmpty {
@@ -114,7 +161,6 @@ struct RecordingView: View {
                                     } label: {
                                         Label("Copy", systemImage: "doc.on.doc")
                                     }
-
                                     Button {
                                         shareItems = [yap.text]
                                         showShareSheet = true
@@ -129,7 +175,6 @@ struct RecordingView: View {
                                 .padding()
                         }
 
-                        // If processing, show message
                         if viewModel.isProcessing {
                             Text("Processing")
                                 .foregroundColor(.white)
@@ -159,21 +204,18 @@ struct RecordingView: View {
                 }
             }
 
-            // -- Record button pinned at bottom, centered horizontally --
+            // Record button pinned at bottom
             VStack {
                 Spacer()
                 HStack {
                     Spacer()
                     ZStack {
-                        // Inner circle
                         Circle()
                             .fill(viewModel.isRecording ? Color.white : Color.red)
                             .frame(width: 70, height: 70)
-                        // Outer border circle
                         Circle()
                             .stroke(Color.white, lineWidth: 2)
                             .frame(width: 74, height: 74)
-                        // Pause icon if recording
                         if viewModel.isRecording {
                             Image(systemName: "pause.fill")
                                 .foregroundColor(.red)
@@ -190,13 +232,8 @@ struct RecordingView: View {
                 .padding(.bottom, 32)
             }
         }
-        // Display share sheet
         .sheet(isPresented: $showShareSheet) {
             ActivityViewControllerWrapper(activityItems: shareItems)
-        }
-        // Sidebar for sessions
-        .sheet(isPresented: $showSidebar) {
-            SessionSidebarView()
         }
     }
 
@@ -205,7 +242,6 @@ struct RecordingView: View {
     }
 }
 
-// MARK: - BarWaveformView (unchanged)
 struct BarWaveformView: View {
     let barAmplitudes: [CGFloat]
     let maxBarHeight: CGFloat
@@ -234,11 +270,9 @@ struct BarWaveformView: View {
     }
 }
 
-// MARK: - Rounding shape
 struct RoundedCorners: Shape {
     var radius: CGFloat
     var corners: UIRectCorner
-
     func path(in rect: CGRect) -> Path {
         let path = UIBezierPath(
             roundedRect: rect,
@@ -249,7 +283,6 @@ struct RoundedCorners: Shape {
     }
 }
 
-// MARK: - Preference Key
 struct BottomOffsetPreferenceKey: PreferenceKey {
     static var defaultValue: CGFloat = 0
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
@@ -257,13 +290,10 @@ struct BottomOffsetPreferenceKey: PreferenceKey {
     }
 }
 
-// MARK: - Share Sheet
 struct ActivityViewControllerWrapper: UIViewControllerRepresentable {
     let activityItems: [Any]
-
     func makeUIViewController(context: Context) -> UIActivityViewController {
         UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
     }
-
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
