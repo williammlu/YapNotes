@@ -1,12 +1,13 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
+
 struct RecordingView: View {
     @StateObject private var viewModel = RecordingViewModel()
 
     let maxBarHeight: CGFloat = 200.0
 
-    // Control the visibility of custom side menus
+    // Control left/right side menus
     @State private var showLeftMenu = false
     @State private var showRightMenu = false
 
@@ -19,21 +20,20 @@ struct RecordingView: View {
 
     // Constants
     private let sideMenuWidth: CGFloat = 250
-    private let edgeTriggerWidth: CGFloat = 30
     private let animationDuration: Double = 0.25
+    // Decide how close to the edge we consider "edge swipe"
+    private let edgeThreshold: CGFloat = 40
+    // Decide how far horizontally user must drag to open menu
+    private let dragOpenThreshold: CGFloat = 40
 
-    // The main offset for content
+    // The main offset for center content
     private var mainContentOffsetX: CGFloat {
-        if showLeftMenu {
-            return sideMenuWidth
-        } else if showRightMenu {
-            return -sideMenuWidth
-        } else {
-            return 0
-        }
+        if showLeftMenu { return sideMenuWidth }
+        else if showRightMenu { return -sideMenuWidth }
+        else { return 0 }
     }
 
-    // Doggy icon name based on amplitude
+    // Doggy icon name
     private var doggyIconName: String {
         let amp = viewModel.currentAmplitude
         if amp < 0.02 { return "doggy-sound-0" }
@@ -44,35 +44,35 @@ struct RecordingView: View {
 
     var body: some View {
         ZStack(alignment: .leading) {
-            // The left side menu
-            SessionSidebarView(onSessionClose: {
+            // Left side menu
+            SessionSidebarView {
                 withAnimation(.linear(duration: animationDuration)) {
                     showLeftMenu = false
                 }
-            })
+            }
             .frame(width: sideMenuWidth)
             .offset(x: showLeftMenu ? 0 : -sideMenuWidth)
 
-            // The right side menu
+            // Right side menu
             HStack {
                 Spacer()
-                SettingsView(onClose: {
+                SettingsView {
                     withAnimation(.linear(duration: animationDuration)) {
                         showRightMenu = false
                     }
-                })
+                }
                 .frame(width: sideMenuWidth)
                 .offset(x: showRightMenu ? 0 : sideMenuWidth)
             }
 
-            // The main center content
+            // Main center content
             ZStack(alignment: .leading) {
                 Color.orange.ignoresSafeArea()
 
-                // Main UI
+                // The main UI
                 mainRecordingContent
 
-                // Dark overlay only in center, if a menu is open
+                // Dark overlay if a menu is open
                 if showLeftMenu || showRightMenu {
                     Color.black.opacity(0.3)
                         .ignoresSafeArea()
@@ -83,56 +83,55 @@ struct RecordingView: View {
                             }
                         }
                 }
-
-                // Invisible edge triggers for left & right swipes
-                // Left trigger
-                HStack { }
-                    .frame(width: edgeTriggerWidth)
-                    .contentShape(Rectangle())
-                    .onTapGesture { /* do nothing, purely for drag detection */ }
-                    .gesture(
-                        DragGesture(minimumDistance: 10)
-                            .onChanged { value in
-                                // If the user drags right from the left edge, open left menu
-                                if value.translation.width > 40 && !showRightMenu {
-                                    withAnimation(.linear(duration: animationDuration)) {
-                                        showLeftMenu = true
-                                        showRightMenu = false
-                                    }
-                                }
-                            }
-                    )
-
-                // Right trigger
-                HStack { Spacer() }
-                    .frame(width: edgeTriggerWidth)
-                    .contentShape(Rectangle())
-                    .onTapGesture {}
-                    .gesture(
-                        DragGesture(minimumDistance: 10)
-                            .onChanged { value in
-                                // If the user drags left from the right edge, open right menu
-                                if value.translation.width < -40 && !showLeftMenu {
-                                    withAnimation(.linear(duration: animationDuration)) {
-                                        showRightMenu = true
-                                        showLeftMenu = false
-                                    }
-                                }
-                            }
-                    )
             }
             .offset(x: mainContentOffsetX)
             .animation(.linear(duration: animationDuration), value: showLeftMenu)
             .animation(.linear(duration: animationDuration), value: showRightMenu)
+            .gesture(
+                // Single drag gesture for the entire center area
+                DragGesture(minimumDistance: 10)
+                    .onEnded { value in
+                        let screenWidth = UIScreen.main.bounds.width
+                        let startX = value.startLocation.x
+                        let totalDX = value.translation.width
+
+                        // If user started near the left edge & dragged right
+                        if startX < edgeThreshold && totalDX > dragOpenThreshold {
+                            // open left if right isn't open
+                            if !showRightMenu {
+                                withAnimation(.linear(duration: animationDuration)) {
+                                    showLeftMenu = true
+                                    showRightMenu = false
+                                }
+                                // Pause if currently recording
+                                if viewModel.isRecording {
+                                    Task { await viewModel.recorder?.stopRecording() }
+                                }
+                            }
+                        }
+                        // If user started near the right edge & dragged left
+                        else if startX > screenWidth - edgeThreshold && totalDX < -dragOpenThreshold {
+                            // open right if left isn't open
+                            if !showLeftMenu {
+                                withAnimation(.linear(duration: animationDuration)) {
+                                    showRightMenu = true
+                                    showLeftMenu = false
+                                }
+                                // Pause if currently recording
+                                if viewModel.isRecording {
+                                    Task { await viewModel.recorder?.stopRecording() }
+                                }
+                            }
+                        }
+                    }
+            )
             .onChange(of: showLeftMenu) { newVal in
                 if newVal, viewModel.isRecording {
-                    // Pause if currently recording
                     Task { await viewModel.recorder?.stopRecording() }
                 }
             }
             .onChange(of: showRightMenu) { newVal in
                 if newVal, viewModel.isRecording {
-                    // Pause if currently recording
                     Task { await viewModel.recorder?.stopRecording() }
                 }
             }
@@ -143,34 +142,30 @@ struct RecordingView: View {
         VStack(spacing: 10) {
             // Top row
             HStack {
-                // Folder button => toggle left
+                // Folder -> open/close left
                 Button {
                     withAnimation(.linear(duration: animationDuration)) {
                         showLeftMenu.toggle()
-                        showRightMenu = false
+                        if showLeftMenu { showRightMenu = false }
                     }
                 } label: {
                     Image(systemName: "folder")
                         .font(.title)
                         .foregroundColor(.white)
                 }
-
                 Spacer()
-
                 Image(doggyIconName)
                     .resizable()
                     .scaledToFit()
                     .foregroundColor(.white)
                     .colorInvert()
                     .frame(width: 100, height: 100)
-
                 Spacer()
-
-                // Gear => toggle right
+                // Gear -> open/close right
                 Button {
                     withAnimation(.linear(duration: animationDuration)) {
                         showRightMenu.toggle()
-                        showLeftMenu = false
+                        if showRightMenu { showLeftMenu = false }
                     }
                 } label: {
                     Image(systemName: "gearshape")
@@ -197,7 +192,7 @@ struct RecordingView: View {
 
             Spacer().frame(height: 10)
 
-            // The yaps list
+            // Yaps list
             ScrollViewReader { proxy in
                 ScrollView(showsIndicators: true) {
                     if !viewModel.yaps.isEmpty {
@@ -267,7 +262,7 @@ struct RecordingView: View {
                 }
             }
 
-            // Record button pinned at bottom
+            // Bottom record button
             VStack {
                 Spacer()
                 HStack {
@@ -302,7 +297,6 @@ struct RecordingView: View {
         viewModel.yaps.map { $0.text }.joined(separator: " ")
     }
 }
-
 
 struct RoundedCorners: Shape {
     var radius: CGFloat
