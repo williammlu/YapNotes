@@ -6,198 +6,224 @@ struct RecordingView: View {
 
     let maxBarHeight: CGFloat = 200.0
 
-    // Control the visibility of our custom side menus
+    // Control the visibility of custom side menus
     @State private var showLeftMenu = false
     @State private var showRightMenu = false
 
-    // Tracks whether user is intentionally scrolled up (so we don’t auto-scroll)
+    // For auto-scroll logic
     @State private var userHasScrolledUp = false
+
+    // For share sheet
     @State private var showShareSheet = false
     @State private var shareItems: [Any] = []
 
-    // Doggy icon
-    private var doggyIconName: String {
-        let amplitude = viewModel.currentAmplitude
-        if amplitude < 0.02 {
-            return "doggy-sound-0"
-        } else if amplitude < 0.04 {
-            return "doggy-sound-1"
-        } else if amplitude < 0.075 {
-            return "doggy-sound-2"
-        } else {
-            return "doggy-sound-3"
-        }
-    }
-
-    // The main content offset X based on side menus
+    // Animated offset for main content
     private var mainContentOffsetX: CGFloat {
-        if showLeftMenu { 
-            // Slide right to reveal left menu
-            return 250 
+        if showLeftMenu {
+            return 250
         } else if showRightMenu {
-            // Slide left to reveal right settings
             return -250
         } else {
             return 0
         }
     }
 
+    // Doggy icon name based on amplitude
+    private var doggyIconName: String {
+        let amp = viewModel.currentAmplitude
+        if amp < 0.02 {
+            return "doggy-sound-0"
+        } else if amp < 0.04 {
+            return "doggy-sound-1"
+        } else if amp < 0.075 {
+            return "doggy-sound-2"
+        } else {
+            return "doggy-sound-3"
+        }
+    }
+
     var body: some View {
         ZStack(alignment: .leading) {
-            // Left side menu (SessionSidebarView)
-            SessionSidebarView(
-                onSessionClose: {
-                    withAnimation { showLeftMenu = false }
+            // Left side menu
+            SessionSidebarView {
+                withAnimation(.linear(duration: 0.25)) {
+                    showLeftMenu = false
                 }
-            )
+            }
             .frame(width: 250)
             .offset(x: showLeftMenu ? 0 : -250)
 
-            // Right side menu (SettingsView)
+            // Right side menu
             HStack {
                 Spacer()
-                SettingsView(onClose: {
-                    withAnimation { showRightMenu = false }
-                })
+                SettingsView {
+                    withAnimation(.linear(duration: 0.25)) {
+                        showRightMenu = false
+                    }
+                }
                 .frame(width: 250)
                 .offset(x: showRightMenu ? 0 : 250)
             }
 
             // Main content
-            mainRecordingContent
-                .offset(x: mainContentOffsetX)
-                .animation(.easeOut, value: showLeftMenu)
-                .animation(.easeOut, value: showRightMenu)
+            ZStack {
+                // Orange background
+                Color.orange.ignoresSafeArea()
+
+                // Main content UI
+                mainRecordingContent
+
+                // Dark overlay if either menu is shown
+                if showLeftMenu || showRightMenu {
+                    Color.black.opacity(0.3)
+                        .ignoresSafeArea()
+                        .onTapGesture {
+                            withAnimation(.linear(duration: 0.25)) {
+                                showLeftMenu = false
+                                showRightMenu = false
+                            }
+                        }
+                }
+            }
+            .offset(x: mainContentOffsetX)
+            .animation(.linear(duration: 0.25), value: showLeftMenu)
+            .animation(.linear(duration: 0.25), value: showRightMenu)
+            .onChange(of: showLeftMenu) { newVal in
+                if newVal, viewModel.isRecording {
+                    // Pause if currently recording
+                    Task { await viewModel.recorder?.stopRecording() }
+                }
+            }
+            .onChange(of: showRightMenu) { newVal in
+                if newVal, viewModel.isRecording {
+                    // Pause if currently recording
+                    Task { await viewModel.recorder?.stopRecording() }
+                }
+            }
         }
     }
 
     private var mainRecordingContent: some View {
-        ZStack {
-            Color.orange
-                .ignoresSafeArea()
-
-            VStack(spacing: 10) {
-                // Top row
-                HStack {
-                    Button(action: {
-                        // Toggle the left menu
-                        withAnimation {
-                            showLeftMenu.toggle()
-                            showRightMenu = false
-                        }
-                    }) {
-                        Image(systemName: "folder")
-                            .font(.title)
-                            .foregroundColor(.white)
+        VStack(spacing: 10) {
+            // Top row with folder + doggy icon + gear
+            HStack {
+                Button {
+                    withAnimation(.linear(duration: 0.25)) {
+                        showLeftMenu.toggle()
+                        showRightMenu = false
                     }
-
-                    Spacer()
-
-                    Image(doggyIconName)
-                        .resizable()
-                        .scaledToFit()
+                } label: {
+                    Image(systemName: "folder")
+                        .font(.title)
                         .foregroundColor(.white)
-                        .colorInvert()
-                        .frame(width: 100, height: 100)
+                }
 
-                    Spacer()
+                Spacer()
 
-                    Button(action: {
-                        withAnimation {
-                            showRightMenu.toggle()
-                            showLeftMenu = false
-                        }
-                    }) {
-                        Image(systemName: "gearshape")
-                            .font(.title)
-                            .foregroundColor(.red)
+                Image(doggyIconName)
+                    .resizable()
+                    .scaledToFit()
+                    .foregroundColor(.white)
+                    .colorInvert()
+                    .frame(width: 100, height: 100)
+
+                Spacer()
+
+                Button {
+                    withAnimation(.linear(duration: 0.25)) {
+                        showRightMenu.toggle()
+                        showLeftMenu = false
                     }
+                } label: {
+                    Image(systemName: "gearshape")
+                        .font(.title)
+                        .foregroundColor(.red)
                 }
-                .padding([.leading, .trailing, .top], 24)
+            }
+            .padding([.leading, .trailing, .top], 24)
 
-                // Single text with all joined text
-                ScrollView {
-                    Text(allYapsConcatenated)
-                        .foregroundColor(.white)
-                        .padding()
-                }
-                .frame(maxHeight: .infinity)
+            // Single text of all yaps
+            ScrollView {
+                Text(allYapsConcatenated)
+                    .foregroundColor(.white)
+                    .padding()
+            }
+            .frame(maxHeight: .infinity)
 
-                // Histogram bars
-                BarWaveformView(
-                    barAmplitudes: viewModel.barAmplitudes,
-                    maxBarHeight: maxBarHeight
-                )
-                .frame(height: maxBarHeight)
+            // Waveform bars
+            BarWaveformView(
+                barAmplitudes: viewModel.barAmplitudes,
+                maxBarHeight: maxBarHeight
+            )
+            .frame(height: maxBarHeight)
 
-                Spacer().frame(height: 10)
+            Spacer().frame(height: 10)
 
-                // Scrollable yaps with auto-scroll
-                ScrollViewReader { proxy in
-                    ScrollView(showsIndicators: true) {
-                        if !viewModel.yaps.isEmpty {
-                            ForEach(viewModel.yaps) { yap in
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text("Yap #\(yap.index) — \(String(format: "%.2f", yap.duration))s")
-                                        .foregroundColor(.yellow)
-                                        .font(.subheadline)
+            // Yaps list
+            ScrollViewReader { proxy in
+                ScrollView(showsIndicators: true) {
+                    if !viewModel.yaps.isEmpty {
+                        ForEach(viewModel.yaps) { yap in
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Yap #\(yap.index) — \(String(format: "%.2f", yap.duration))s")
+                                    .foregroundColor(.yellow)
+                                    .font(.subheadline)
 
-                                    Text(yap.text)
-                                        .foregroundColor(.white)
+                                Text(yap.text)
+                                    .foregroundColor(.white)
+                            }
+                            .padding()
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Color.gray.opacity(0.2))
+                            .cornerRadius(10)
+                            .padding(.horizontal, 24)
+                            .padding(.bottom, 4)
+                            .id(yap.id)
+                            .onTapGesture {
+                                viewModel.playYapAudio(yap)
+                            }
+                            .contextMenu {
+                                Button {
+                                    UIPasteboard.general.string = yap.text
+                                } label: {
+                                    Label("Copy", systemImage: "doc.on.doc")
                                 }
-                                .padding()
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .background(Color.gray.opacity(0.2))
-                                .cornerRadius(10)
-                                .padding(.horizontal, 24)
-                                .padding(.bottom, 4)
-                                .id(yap.id)
-                                .onTapGesture {
-                                    viewModel.playYapAudio(yap)
-                                }
-                                .contextMenu {
-                                    Button {
-                                        UIPasteboard.general.string = yap.text
-                                    } label: {
-                                        Label("Copy", systemImage: "doc.on.doc")
-                                    }
-                                    Button {
-                                        shareItems = [yap.text]
-                                        showShareSheet = true
-                                    } label: {
-                                        Label("Share", systemImage: "square.and.arrow.up")
-                                    }
+                                Button {
+                                    shareItems = [yap.text]
+                                    showShareSheet = true
+                                } label: {
+                                    Label("Share", systemImage: "square.and.arrow.up")
                                 }
                             }
-                        } else {
-                            Text("No yaps recorded yet.")
-                                .foregroundColor(.white)
-                                .padding()
                         }
-
-                        if viewModel.isProcessing {
-                            Text("Processing")
-                                .foregroundColor(.white)
-                                .padding(8)
-                                .background(Color.black.opacity(0.7))
-                                .cornerRadius(8)
-                                .padding()
-                                .id("PROCESSING")
-                        }
-
-                        Spacer().frame(height: 120).id("BOTTOM")
+                    } else {
+                        Text("No yaps recorded yet.")
+                            .foregroundColor(.white)
+                            .padding()
                     }
-                    .onPreferenceChange(BottomOffsetPreferenceKey.self) { newOffset in
-                        let screenHeight = UIScreen.main.bounds.height
-                        let threshold = screenHeight * 1.2
-                        userHasScrolledUp = (newOffset < -threshold)
+
+                    if viewModel.isProcessing {
+                        Text("Processing")
+                            .foregroundColor(.white)
+                            .padding(8)
+                            .background(Color.black.opacity(0.7))
+                            .cornerRadius(8)
+                            .padding()
+                            .id("PROCESSING")
                     }
-                    .onChange(of: viewModel.yaps) { _ in
-                        if !userHasScrolledUp {
-                            DispatchQueue.main.async {
-                                withAnimation {
-                                    proxy.scrollTo("BOTTOM", anchor: .bottom)
-                                }
+
+                    Spacer().frame(height: 120).id("BOTTOM")
+                }
+                .onPreferenceChange(BottomOffsetPreferenceKey.self) { offset in
+                    let screenHeight = UIScreen.main.bounds.height
+                    let threshold = screenHeight * 1.2
+                    userHasScrolledUp = (offset < -threshold)
+                }
+                .onChange(of: viewModel.yaps) { _ in
+                    if !userHasScrolledUp {
+                        DispatchQueue.main.async {
+                            withAnimation {
+                                proxy.scrollTo("BOTTOM", anchor: .bottom)
                             }
                         }
                     }

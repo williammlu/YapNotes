@@ -27,7 +27,7 @@ class RecordingViewModel: ObservableObject {
     // For playback
     private var audioPlayer: AVAudioPlayer?
 
-    private var recorder: AudioRecorder?
+    var recorder: AudioRecorder?
     private var whisperContext: WhisperContext?
     private var engine: AVAudioEngine?
     private var audioTimer: Timer?
@@ -164,71 +164,78 @@ class RecordingViewModel: ObservableObject {
         }
     }
 
+    func stopRecording () async {
+        // Stop
+        isRecording = false
+        audioTimer?.invalidate()
+        audioTimer = nil
+        await recorder?.stopRecording()
+
+        // Possibly finalize leftover
+        if !currentYapSamples.isEmpty {
+            finalizeYap(force: true)
+        }
+
+        // Combine text
+        let allTexts = yaps.map { $0.text }
+        transcribedText = allTexts.joined(separator: " ")
+
+        // You might do a final save of metadata here, if needed
+        saveCurrentSessionMetadata()
+
+    }
+    
+    func startRecording() async {
+        do {
+            let (folderURL, meta) = try SessionManager.shared.createNewSessionFolder()
+            currentSessionFolder = folderURL
+            currentSessionMetadata = meta
+        } catch {
+            print("Failed to create session folder: \(error)")
+            return
+        }
+
+        // Reset
+        isRecording = true
+        transcribedText = ""
+        yaps.removeAll()
+        currentYapSamples.removeAll()
+        silentFrameCount = 0
+        yapHasSpeech = false
+        yapIndex = 0
+
+        // Track total record time
+        recordingStart = Date()
+
+        // Record to that session folder
+        guard let folder = currentSessionFolder else { return }
+        let wavURL = folder.appendingPathComponent("session.wav")
+
+        // Start recording
+        if recorder == nil {
+            recorder = AudioRecorder()
+        }
+        do {
+            print("Starting recording at file \(wavURL)")
+            try await recorder?.startRecording(toOutputFile: wavURL)
+        } catch {
+            isRecording = false
+            print("Failed to start recording: \(error)")
+            return
+        }
+
+        // Mark the start of the first yap
+        yapStartTime = Date()
+    }
     /// Toggle recording on/off
     func toggleRecording() async {
         guard let whisperContext else { return }
 
         if isRecording {
-            // Stop
-            isRecording = false
-            audioTimer?.invalidate()
-            audioTimer = nil
-            await recorder?.stopRecording()
-
-            // Possibly finalize leftover
-            if !currentYapSamples.isEmpty {
-                finalizeYap(force: true)
-            }
-
-            // Combine text
-            let allTexts = yaps.map { $0.text }
-            transcribedText = allTexts.joined(separator: " ")
-
-            // You might do a final save of metadata here, if needed
-            saveCurrentSessionMetadata()
-
+            await stopRecording()
         } else {
             // Start new session
-            do {
-                let (folderURL, meta) = try SessionManager.shared.createNewSessionFolder()
-                currentSessionFolder = folderURL
-                currentSessionMetadata = meta
-            } catch {
-                print("Failed to create session folder: \(error)")
-                return
-            }
-
-            // Reset
-            isRecording = true
-            transcribedText = ""
-            yaps.removeAll()
-            currentYapSamples.removeAll()
-            silentFrameCount = 0
-            yapHasSpeech = false
-            yapIndex = 0
-
-            // Track total record time
-            recordingStart = Date()
-
-            // Record to that session folder
-            guard let folder = currentSessionFolder else { return }
-            let wavURL = folder.appendingPathComponent("session.wav")
-
-            // Start recording
-            if recorder == nil {
-                recorder = AudioRecorder()
-            }
-            do {
-                print("Starting recording at file \(wavURL)")
-                try await recorder?.startRecording(toOutputFile: wavURL)
-            } catch {
-                isRecording = false
-                print("Failed to start recording: \(error)")
-                return
-            }
-
-            // Mark the start of the first yap
-            yapStartTime = Date()
+           await  startRecording()
         }
     }
 
