@@ -10,25 +10,7 @@ fileprivate extension Comparable {
     }
 }
 
-struct SharePresenter: UIViewControllerRepresentable {
-    @Binding var shouldPresent: Bool
-    @Binding var items: [Any]
 
-    func makeUIViewController(context: Context) -> UIViewController {
-        UIViewController()
-    }
-
-    func updateUIViewController(_ uiViewController: UIViewController, context: Context) {
-        guard shouldPresent else { return }
-
-        let activityVC = UIActivityViewController(activityItems: items, applicationActivities: nil)
-        DispatchQueue.main.async {
-            uiViewController.present(activityVC, animated: true) {
-                shouldPresent = false
-            }
-        }
-    }
-}
 
 struct RecordingView: View {
     @StateObject private var viewModel = RecordingViewModel()
@@ -63,7 +45,8 @@ struct RecordingView: View {
     private func finalizeDrag() {
         // If offset is > 0, we consider left side open or close
         if dragOffset > 0 {
-            if dragOffset > sideMenuWidth * UIConstants.sideMenuSwipeThreshold {
+            let threshold = sideMenuWidth * (isLeftOpen ? (1.0 - UIConstants.sideMenuSwipeThreshold) : UIConstants.sideMenuSwipeThreshold)
+            if dragOffset >= threshold {
                 withAnimation(.easeOut(duration: animationDuration)) {
                     dragOffset = sideMenuWidth
                 }
@@ -82,7 +65,8 @@ struct RecordingView: View {
         }
         // If offset < 0, we consider right side
         else if dragOffset < 0 {
-            if abs(dragOffset) > sideMenuWidth * UIConstants.sideMenuSwipeThreshold {
+            let threshold = sideMenuWidth * (isRightOpen ? (1.0 - UIConstants.sideMenuSwipeThreshold) : UIConstants.sideMenuSwipeThreshold)
+            if dragOffset <= -threshold {
                 withAnimation(.easeOut(duration: animationDuration)) {
                     dragOffset = -sideMenuWidth
                 }
