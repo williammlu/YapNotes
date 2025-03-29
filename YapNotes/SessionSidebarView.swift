@@ -22,7 +22,8 @@ struct SessionSidebarView: View {
                         onSessionClose()
                     }
                 }
-                .padding()
+                .padding(.horizontal, 24)
+                .padding(.top, 8)
 
                 // iOS 15+ approach with List & .swipeActions
                 List {
