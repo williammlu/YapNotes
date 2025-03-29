@@ -30,10 +30,10 @@ struct RecordingView: View {
     @State private var showShareSheet = false
     @State private var shareItems: [Any] = []
 
-    // Decide final
+    // Decide final offset after drag ends
     private func finalizeDrag() {
+        // If offset is > 0, we consider left side open or close
         if dragOffset > 0 {
-            // Possibly open left
             if dragOffset > sideMenuWidth / 2 {
                 withAnimation(.easeOut(duration: animationDuration)) {
                     dragOffset = sideMenuWidth
@@ -44,15 +44,15 @@ struct RecordingView: View {
                     Task { await viewModel.recorder?.stopRecording() }
                 }
             } else {
-                // Snap closed
                 withAnimation(.easeOut(duration: animationDuration)) {
                     dragOffset = 0
                 }
                 isLeftOpen = false
                 isRightOpen = false
             }
-        } else if dragOffset < 0 {
-            // Possibly open right
+        }
+        // If offset < 0, we consider right side
+        else if dragOffset < 0 {
             if abs(dragOffset) > sideMenuWidth / 2 {
                 withAnimation(.easeOut(duration: animationDuration)) {
                     dragOffset = -sideMenuWidth
@@ -63,33 +63,48 @@ struct RecordingView: View {
                     Task { await viewModel.recorder?.stopRecording() }
                 }
             } else {
-                // Snap closed
                 withAnimation(.easeOut(duration: animationDuration)) {
                     dragOffset = 0
                 }
                 isLeftOpen = false
                 isRightOpen = false
             }
-        } else {
-            // Ended near zero => fully closed
+        }
+        // Otherwise near zero => closed
+        else {
             isLeftOpen = false
             isRightOpen = false
         }
+        print("finalize drag =>", dragOffset)
     }
 
-    // Doggy icon
+    /// Compute overlay alpha based on absolute offset
+    private var overlayAlpha: Double {
+        let fraction = Double(abs(dragOffset)) / Double(sideMenuWidth)
+        // up to 0.9 alpha
+        return fraction * 0.3
+    }
+
+    // Doggy icon based on amplitude
     private var doggyIconName: String {
         let amp = viewModel.currentAmplitude
-        if amp < 0.02 { return "doggy-sound-0" }
-        else if amp < 0.04 { return "doggy-sound-1" }
-        else if amp < 0.075 { return "doggy-sound-2" }
-        else { return "doggy-sound-3" }
+        switch amp {
+        case ..<0.02:
+            return "doggy-sound-0"
+        case ..<0.04:
+            return "doggy-sound-1"
+        case ..<0.075:
+            return "doggy-sound-2"
+        default:
+            return "doggy-sound-3"
+        }
     }
 
     var body: some View {
         ZStack(alignment: .leading) {
-            // LEFT MENU
+            // Left menu
             SessionSidebarView {
+                // Close side menu
                 withAnimation(.easeOut(duration: animationDuration)) {
                     dragOffset = 0
                     isLeftOpen = false
@@ -99,7 +114,7 @@ struct RecordingView: View {
             .frame(width: sideMenuWidth)
             .offset(x: dragOffset - sideMenuWidth)
 
-            // RIGHT MENU
+            // Right menu
             HStack {
                 Spacer()
                 SettingsView {
@@ -113,33 +128,39 @@ struct RecordingView: View {
                 .offset(x: sideMenuWidth + dragOffset)
             }
 
-            // MAIN CONTENT
+            // Main content, including overlay
             ZStack {
                 Color.orange.ignoresSafeArea()
 
                 mainContent
 
-                // Overlay if partially open
-                if dragOffset != 0 {
-                    Color.black
-                        .opacity(0.3 * Double(abs(dragOffset) / sideMenuWidth))
-                        .ignoresSafeArea()
-                        .onTapGesture {
-                            withAnimation(.easeOut(duration: animationDuration)) {
-                                dragOffset = 0
-                                isLeftOpen = false
-                                isRightOpen = false
-                            }
+                // The overlay is always in place, ignoring safe area
+                // (covers header + footer). We do NOT attach an explicit
+                // animation to 'overlayAlpha' on drag so there's no lag.
+                Color.black
+                    .opacity(overlayAlpha)
+                    .edgesIgnoringSafeArea(.all)
+                    // For direct dragging, we do no auto-animation
+                    // The open/close from the button triggers changes in dragOffset
+                    // with a withAnimation, so the alpha will also animate
+                    // but it won't be "delayed".
+                    .onTapGesture {
+                        // If user taps overlay => close
+                        withAnimation(.easeOut(duration: animationDuration)) {
+                            dragOffset = 0
+                            isLeftOpen = false
+                            isRightOpen = false
                         }
-                }
+                    }
+                    // Only allow taps if alpha is > ~0
+                    .allowsHitTesting(overlayAlpha > 0.01)
             }
             .offset(x: dragOffset)
             .gesture(
                 DragGesture()
+                    // We'll do no .animation here, so the offset
+                    // moves 1:1 with the finger, no gap
                     .onChanged { value in
-                        // We compute a base offset depending on which side is open
-                        // or none. If left is open => base=+250, if right => -250, else 0.
-                        // Then we add the current drag translation.
                         let base: CGFloat
                         if isLeftOpen {
                             base = sideMenuWidth
@@ -148,10 +169,9 @@ struct RecordingView: View {
                         } else {
                             base = 0
                         }
-
-                        // total offset
                         let newOffset = base + value.translation.width
-                        dragOffset = newOffset.clamped(to: -sideMenuWidth ... sideMenuWidth)
+                        dragOffset = newOffset.clamped(to: -sideMenuWidth...sideMenuWidth)
+                        print("drag changed =>", dragOffset)
                     }
                     .onEnded { _ in
                         finalizeDrag()
@@ -165,17 +185,15 @@ struct RecordingView: View {
 
     private var mainContent: some View {
         VStack(spacing: 10) {
-            // Top row
+            // Top row: Left & right toggles
             HStack {
-                // Left toggle
+                // Folder (left) toggle
                 Button {
                     withAnimation(.easeOut(duration: animationDuration)) {
                         if isLeftOpen {
-                            // close
                             dragOffset = 0
                             isLeftOpen = false
                         } else {
-                            // open left
                             dragOffset = sideMenuWidth
                             isLeftOpen = true
                             isRightOpen = false
@@ -201,15 +219,13 @@ struct RecordingView: View {
 
                 Spacer()
 
-                // Right toggle
+                // Gear (right) toggle
                 Button {
                     withAnimation(.easeOut(duration: animationDuration)) {
                         if isRightOpen {
-                            // close
                             dragOffset = 0
                             isRightOpen = false
                         } else {
-                            // open right
                             dragOffset = -sideMenuWidth
                             isRightOpen = true
                             isLeftOpen = false
@@ -226,7 +242,7 @@ struct RecordingView: View {
             }
             .padding([.leading, .trailing, .top], 24)
 
-            // The rest
+            // Middle text scroller
             ScrollView {
                 Text(viewModel.yaps.map(\.text).joined(separator: " "))
                     .foregroundColor(.white)
@@ -234,11 +250,13 @@ struct RecordingView: View {
             }
             .frame(maxHeight: .infinity)
 
+            // The bar waveform
             BarWaveformView(barAmplitudes: viewModel.barAmplitudes, maxBarHeight: maxBarHeight)
                 .frame(height: maxBarHeight)
 
             Spacer().frame(height: 10)
 
+            // Yaps list
             ScrollViewReader { proxy in
                 ScrollView(showsIndicators: true) {
                     if !viewModel.yaps.isEmpty {
@@ -308,6 +326,7 @@ struct RecordingView: View {
                 }
             }
 
+            // Big record/pause button
             VStack {
                 Spacer()
                 HStack {
@@ -319,7 +338,6 @@ struct RecordingView: View {
                         Circle()
                             .stroke(.white, lineWidth: 2)
                             .frame(width: 74, height: 74)
-
                         if viewModel.isRecording {
                             Image(systemName: "pause.fill")
                                 .foregroundColor(.red)
