@@ -167,6 +167,11 @@ struct RecordingView: View {
                     // We'll do no .animation here, so the offset
                     // moves 1:1 with the finger, no gap
                     .onChanged { value in
+                        let horizontal = abs(value.translation.width)
+                        let vertical = abs(value.translation.height)
+
+                        guard horizontal > vertical else { return }
+
                         let base: CGFloat
                         if isLeftOpen {
                             base = sideMenuWidth
@@ -274,7 +279,9 @@ struct RecordingView: View {
                 ScrollView {
                     Text(viewModel.yaps.map(\.text).joined(separator: " "))
                         .foregroundColor(.white)
-                        .padding()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 24)
+                        .padding(.top, 16)
                 }
                 .frame(maxHeight: .infinity, alignment: .top)
                 .padding(.bottom, 16)

@@ -55,8 +55,17 @@ class RecordingViewModel: ObservableObject {
     private var currentSessionMetadata: SessionMetadata?
 
     init() {
-        loadLocalModel()
-        prepareAudio()
+    loadLocalModel()
+    prepareAudio()
+    if currentSessionFolder == nil {
+        do {
+            let (folderURL, meta) = try SessionManager.shared.createNewSessionFolder()
+            currentSessionFolder = folderURL
+            currentSessionMetadata = meta
+        } catch {
+            print("Failed to create session folder during init: \(error)")
+        }
+    }
     }
 
     private func loadLocalModel() {
@@ -180,29 +189,20 @@ class RecordingViewModel: ObservableObject {
         let allTexts = yaps.map { $0.text }
         transcribedText = allTexts.joined(separator: " ")
 
-        // You might do a final save of metadata here, if needed
+        // Removed old metadata save call
+        // saveCurrentSessionMetadata()
+        
+        // Final save of session metadata at end of stopRecording()
         saveCurrentSessionMetadata()
 
     }
     
     func startRecording() async {
-        do {
-            let (folderURL, meta) = try SessionManager.shared.createNewSessionFolder()
-            currentSessionFolder = folderURL
-            currentSessionMetadata = meta
-        } catch {
-            print("Failed to create session folder: \(error)")
-            return
-        }
+    // Session folder already created in init()
 
-        // Reset
+        // Resume recording without resetting session state
         isRecording = true
-        transcribedText = ""
-        yaps.removeAll()
-        currentYapSamples.removeAll()
-        silentFrameCount = 0
-        yapHasSpeech = false
-        yapIndex = 0
+        recordingStart = Date()
 
         // Track total record time
         recordingStart = Date()
