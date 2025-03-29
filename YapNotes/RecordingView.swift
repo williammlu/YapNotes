@@ -6,9 +6,12 @@ struct RecordingView: View {
 
     let maxBarHeight: CGFloat = 200.0
 
-    // Control left/right side menus
-    @State private var showLeftMenu = false
-    @State private var showRightMenu = false
+    // We'll remove showLeftMenu / showRightMenu booleans,
+    // and replace them with a single drag offset that can be from -250...0...250
+    // to represent side drawer states. The "open" states are offset == 250 (left) or -250 (right).
+
+    @State private var dragOffset: CGFloat = 0 // Real-time offset from center
+    private var dragFactor: CGFloat = 0.025
 
     // For auto-scroll logic
     @State private var userHasScrolledUp = false
@@ -19,16 +22,11 @@ struct RecordingView: View {
 
     // Constants
     private let sideMenuWidth: CGFloat = 250
-    private let animationDuration: Double = 0.25
-    private let edgeThreshold: CGFloat = 40
-    private let dragOpenThreshold: CGFloat = 40
+    private let animationDuration: Double = 0.3
 
-    // The main offset for center content
-    private var mainContentOffsetX: CGFloat {
-        if showLeftMenu { return sideMenuWidth }
-        else if showRightMenu { return -sideMenuWidth }
-        else { return 0 }
-    }
+    // If offset == sideMenuWidth, left drawer is "open"
+    // If offset == -sideMenuWidth, right drawer is "open"
+    // If offset == 0, none open
 
     // Doggy icon name
     private var doggyIconName: String {
@@ -39,255 +37,279 @@ struct RecordingView: View {
         else { return "doggy-sound-3" }
     }
 
+    // A helper to check if left is open
+    private var isLeftOpen: Bool {
+        dragOffset == sideMenuWidth
+    }
+    // Right open
+    private var isRightOpen: Bool {
+        dragOffset == -sideMenuWidth
+    }
+
     var body: some View {
         ZStack(alignment: .leading) {
-            // 1) Left side menu behind everything
+            // Left side menu
             SessionSidebarView {
+                // Tapping "Close" => animate offset to 0
                 withAnimation(.linear(duration: animationDuration)) {
-                    showLeftMenu = false
+                    dragOffset = 0
                 }
             }
             .frame(width: sideMenuWidth)
-            .offset(x: showLeftMenu ? 0 : -sideMenuWidth)
+            .offset(x: dragOffset >= 0 ? 0 : -sideMenuWidth) // If offset < 0, hide left menu
+            // We only show the left menu if dragOffset > 0
 
-            // 2) Right side menu
+            // Right side menu
             HStack {
                 Spacer()
                 SettingsView {
                     withAnimation(.linear(duration: animationDuration)) {
-                        showRightMenu = false
+                        dragOffset = 0
                     }
                 }
                 .frame(width: sideMenuWidth)
-                .offset(x: showRightMenu ? 0 : sideMenuWidth)
+                // We only show the right menu if dragOffset < 0
+                .offset(x: dragOffset <= 0 ? 0 : sideMenuWidth)
             }
 
-            // 3) Main content, offset left/right
-            mainCenterContent
-                .offset(x: mainContentOffsetX)
-                .animation(.linear(duration: animationDuration), value: showLeftMenu)
-                .animation(.linear(duration: animationDuration), value: showRightMenu)
+            // Main content with partial offset
+            ZStack {
+                Color.orange.ignoresSafeArea()
 
-            // 4) Top-level overlay (not offset!) 
-            // If either menu is open, show a dark overlay
-            if showLeftMenu || showRightMenu {
-                Color.black.opacity(0.3)
-                    .ignoresSafeArea()
-                    .onTapGesture {
-                        withAnimation(.linear(duration: animationDuration)) {
-                            showLeftMenu = false
-                            showRightMenu = false
-                        }
-                    }
-            }
-        }
-        // Pause recording if user opens a side
-        .onChange(of: showLeftMenu) { newVal in
-            if newVal, viewModel.isRecording {
-                Task { await viewModel.recorder?.stopRecording() }
-            }
-        }
-        .onChange(of: showRightMenu) { newVal in
-            if newVal, viewModel.isRecording {
-                Task { await viewModel.recorder?.stopRecording() }
-            }
-        }
-        // Single drag for open logic
-        .gesture(
-            DragGesture(minimumDistance: 10)
-                .onEnded { value in
-                    let screenWidth = UIScreen.main.bounds.width
-                    let startX = value.startLocation.x
-                    let totalDX = value.translation.width
+                mainCenterContent
 
-                    // If user started near left edge & dragged right
-                    if startX < edgeThreshold && totalDX > dragOpenThreshold {
-                        // open left if right isn't open
-                        if !showRightMenu {
+                // If offset != 0, show overlay (i.e. user is partially or fully opening a menu)
+                if dragOffset != 0 {
+                    Color.black
+                        .opacity(0.3 * Double(abs(dragOffset / sideMenuWidth)))
+                        .ignoresSafeArea()
+                        .onTapGesture {
+                            // Tapping overlay => close
                             withAnimation(.linear(duration: animationDuration)) {
-                                showLeftMenu = true
-                                showRightMenu = false
-                            }
-                            if viewModel.isRecording {
-                                Task { await viewModel.recorder?.stopRecording() }
+                                dragOffset = 0
                             }
                         }
-                    }
-                    // If user started near right edge & dragged left
-                    else if startX > screenWidth - edgeThreshold && totalDX < -dragOpenThreshold {
-                        // open right if left isn't open
-                        if !showLeftMenu {
-                            withAnimation(.linear(duration: animationDuration)) {
-                                showRightMenu = true
-                                showLeftMenu = false
-                            }
-                            if viewModel.isRecording {
-                                Task { await viewModel.recorder?.stopRecording() }
-                            }
-                        }
-                    }
                 }
-        )
+            }
+            .offset(x: dragOffset)
+            .gesture(
+                DragGesture()
+                    .onChanged { value in
+                        // Live update the offset
+                        // We clamp dragOffset between -sideMenuWidth...sideMenuWidth
+                        let newOffset = (value.translation.width) // - math.clamp(value.translation.width, -20, 20)
+                        print(newOffset, " ", isLeftOpen, isRightOpen)
+                        dragOffset = max(-sideMenuWidth, min(sideMenuWidth, newOffset))
+                    }
+                    .onEnded { value in
+                        // In onEnded, decide final position
+                        // If user was near left edge or the offset > 0 => possibly open left
+                        if dragOffset > 0 {
+                            // if dragOffset > half of sideMenuWidth, snap open. else snap closed
+                            if dragOffset > sideMenuWidth / 2 {
+                                withAnimation(.smooth(duration: animationDuration)) {
+                                    dragOffset = sideMenuWidth
+                                }
+                                // Pause if needed
+                                if viewModel.isRecording {
+                                    Task { await viewModel.recorder?.stopRecording() }
+                                }
+                            } else {
+                                withAnimation(.easeInOut(duration: animationDuration)) {
+                                    dragOffset = 0
+                                }
+                            }
+                        }
+                        // If user was near right edge or the offset < 0 => possibly open right
+                        else if dragOffset < 0 {
+                            if abs(dragOffset) > (sideMenuWidth / 2) {
+                                withAnimation(.easeInOut(duration: animationDuration)) {
+                                    dragOffset = -sideMenuWidth
+                                }
+                                // Pause if needed
+                                if viewModel.isRecording {
+                                    Task { await viewModel.recorder?.stopRecording() }
+                                }
+                            } else {
+                                withAnimation(.easeInOut(duration: animationDuration)) {
+                                    dragOffset = 0
+                                }
+                            }
+                        }
+                    }
+            )
+        }
     }
 
-    // The main center content
     private var mainCenterContent: some View {
-        ZStack {
-            Color.orange.ignoresSafeArea()
-
-            VStack(spacing: 10) {
-                // Top row
-                HStack {
-                    Button {
-                        withAnimation(.linear(duration: animationDuration)) {
-                            showLeftMenu.toggle()
-                            if showLeftMenu { showRightMenu = false }
-                        }
-                    } label: {
-                        Image(systemName: "folder")
-                            .font(.title)
-                            .foregroundColor(.white)
-                    }
-
-                    Spacer()
-
-                    Image(doggyIconName)
-                        .resizable()
-                        .scaledToFit()
-                        .foregroundColor(.white)
-                        .colorInvert()
-                        .frame(width: 100, height: 100)
-
-                    Spacer()
-
-                    Button {
-                        withAnimation(.linear(duration: animationDuration)) {
-                            showRightMenu.toggle()
-                            if showRightMenu { showLeftMenu = false }
-                        }
-                    } label: {
-                        Image(systemName: "gearshape")
-                            .font(.title)
-                            .foregroundColor(.white)
-                    }
-                }
-                .padding([.leading, .trailing, .top], 24)
-
-                // Single text with all yaps
-                ScrollView {
-                    Text(allYapsConcatenated)
-                        .foregroundColor(.white)
-                        .padding()
-                }
-                .frame(maxHeight: .infinity)
-
-                BarWaveformView(
-                    barAmplitudes: viewModel.barAmplitudes,
-                    maxBarHeight: maxBarHeight
-                )
-                .frame(height: maxBarHeight)
-
-                Spacer().frame(height: 10)
-
-                // Yaps
-                ScrollViewReader { proxy in
-                    ScrollView(showsIndicators: true) {
-                        if !viewModel.yaps.isEmpty {
-                            ForEach(viewModel.yaps) { yap in
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text("Yap #\(yap.index) — \(String(format: "%.2f", yap.duration))s")
-                                        .foregroundColor(.yellow)
-                                        .font(.subheadline)
-                                    Text(yap.text)
-                                        .foregroundColor(.white)
-                                }
-                                .padding()
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .background(Color.gray.opacity(0.2))
-                                .cornerRadius(10)
-                                .padding(.horizontal, 24)
-                                .padding(.bottom, 4)
-                                .id(yap.id)
-                                .onTapGesture {
-                                    viewModel.playYapAudio(yap)
-                                }
-                                .contextMenu {
-                                    Button {
-                                        UIPasteboard.general.string = yap.text
-                                    } label: {
-                                        Label("Copy", systemImage: "doc.on.doc")
-                                    }
-                                    Button {
-                                        shareItems = [yap.text]
-                                        showShareSheet = true
-                                    } label: {
-                                        Label("Share", systemImage: "square.and.arrow.up")
-                                    }
-                                }
-                            }
+        VStack(spacing: 10) {
+            // Top row
+            HStack {
+                // Folder -> if we are not open on the left, animate to left
+                // or close if open
+                Button {
+                    withAnimation(.linear(duration: animationDuration)) {
+                        if isLeftOpen {
+                            dragOffset = 0
                         } else {
-                            Text("No yaps recorded yet.")
-                                .foregroundColor(.white)
-                                .padding()
+                            dragOffset = sideMenuWidth
+                            if viewModel.isRecording {
+                                Task { await viewModel.recorder?.stopRecording() }
+                            }
                         }
+                    }
+                } label: {
+                    Image(systemName: "folder")
+                        .font(.title)
+                        .foregroundColor(.white)
+                }
 
-                        if viewModel.isProcessing {
-                            Text("Processing")
-                                .foregroundColor(.white)
-                                .padding(8)
-                                .background(Color.black.opacity(0.7))
-                                .cornerRadius(8)
-                                .padding()
-                                .id("PROCESSING")
+                Spacer()
+
+                Image(doggyIconName)
+                    .resizable()
+                    .scaledToFit()
+                    .foregroundColor(.white)
+                    .colorInvert()
+                    .frame(width: 100, height: 100)
+
+                Spacer()
+
+                // Gear -> open right or close
+                Button {
+                    withAnimation(.linear(duration: animationDuration)) {
+                        if isRightOpen {
+                            dragOffset = 0
+                        } else {
+                            dragOffset = -sideMenuWidth
+                            if viewModel.isRecording {
+                                Task { await viewModel.recorder?.stopRecording() }
+                            }
                         }
+                    }
+                } label: {
+                    Image(systemName: "gearshape")
+                        .font(.title)
+                        .foregroundColor(.white)
+                }
+            }
+            .padding([.leading, .trailing, .top], 24)
 
-                        Spacer().frame(height: 120).id("BOTTOM")
-                    }
-                    .onPreferenceChange(BottomOffsetPreferenceKey.self) { offset in
-                        let screenHeight = UIScreen.main.bounds.height
-                        let threshold = screenHeight * 1.2
-                        userHasScrolledUp = (offset < -threshold)
-                    }
-                    .onChange(of: viewModel.yaps) { _ in
-                        if !userHasScrolledUp {
-                            DispatchQueue.main.async {
-                                withAnimation {
-                                    proxy.scrollTo("BOTTOM", anchor: .bottom)
+            // Single text with all yaps
+            ScrollView {
+                Text(allYapsConcatenated)
+                    .foregroundColor(.white)
+                    .padding()
+            }
+            .frame(maxHeight: .infinity)
+
+            // Waveform
+            BarWaveformView(
+                barAmplitudes: viewModel.barAmplitudes,
+                maxBarHeight: maxBarHeight
+            )
+            .frame(height: maxBarHeight)
+
+            Spacer().frame(height: 10)
+
+            // Yaps list
+            ScrollViewReader { proxy in
+                ScrollView(showsIndicators: true) {
+                    if !viewModel.yaps.isEmpty {
+                        ForEach(viewModel.yaps) { yap in
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Yap #\(yap.index) — \(String(format: "%.2f", yap.duration))s")
+                                    .foregroundColor(.yellow)
+                                    .font(.subheadline)
+                                Text(yap.text)
+                                    .foregroundColor(.white)
+                            }
+                            .padding()
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Color.gray.opacity(0.2))
+                            .cornerRadius(10)
+                            .padding(.horizontal, 24)
+                            .padding(.bottom, 4)
+                            .id(yap.id)
+                            .onTapGesture {
+                                viewModel.playYapAudio(yap)
+                            }
+                            .contextMenu {
+                                Button {
+                                    UIPasteboard.general.string = yap.text
+                                } label: {
+                                    Label("Copy", systemImage: "doc.on.doc")
+                                }
+                                Button {
+                                    shareItems = [yap.text]
+                                    showShareSheet = true
+                                } label: {
+                                    Label("Share", systemImage: "square.and.arrow.up")
                                 }
                             }
                         }
+                    } else {
+                        Text("No yaps recorded yet.")
+                            .foregroundColor(.white)
+                            .padding()
                     }
-                }
 
-                // Record button pinned at bottom
-                VStack {
-                    Spacer()
-                    HStack {
-                        Spacer()
-                        ZStack {
-                            Circle()
-                                .fill(viewModel.isRecording ? Color.white : Color.red)
-                                .frame(width: 70, height: 70)
-                            Circle()
-                                .stroke(Color.white, lineWidth: 2)
-                                .frame(width: 74, height: 74)
-                            if viewModel.isRecording {
-                                Image(systemName: "pause.fill")
-                                    .foregroundColor(.red)
-                                    .font(.title)
+                    if viewModel.isProcessing {
+                        Text("Processing")
+                            .foregroundColor(.white)
+                            .padding(8)
+                            .background(Color.black.opacity(0.7))
+                            .cornerRadius(8)
+                            .padding()
+                            .id("PROCESSING")
+                    }
+
+                    Spacer().frame(height: 120).id("BOTTOM")
+                }
+                .onPreferenceChange(BottomOffsetPreferenceKey.self) { offset in
+                    let screenHeight = UIScreen.main.bounds.height
+                    let threshold = screenHeight * 1.2
+                    userHasScrolledUp = (offset < -threshold)
+                }
+                .onChange(of: viewModel.yaps) { _ in
+                    if !userHasScrolledUp {
+                        DispatchQueue.main.async {
+                            withAnimation {
+                                proxy.scrollTo("BOTTOM", anchor: .bottom)
                             }
                         }
-                        .onTapGesture {
-                            Task { await viewModel.toggleRecording() }
-                        }
-                        Spacer()
                     }
-                    .padding(.bottom, 32)
                 }
             }
-            .sheet(isPresented: $showShareSheet) {
-                ActivityViewControllerWrapper(activityItems: shareItems)
+
+            // Record button pinned at bottom
+            VStack {
+                Spacer()
+                HStack {
+                    Spacer()
+                    ZStack {
+                        Circle()
+                            .fill(viewModel.isRecording ? Color.white : Color.red)
+                            .frame(width: 70, height: 70)
+                        Circle()
+                            .stroke(Color.white, lineWidth: 2)
+                            .frame(width: 74, height: 74)
+                        if viewModel.isRecording {
+                            Image(systemName: "pause.fill")
+                                .foregroundColor(.red)
+                                .font(.title)
+                        }
+                    }
+                    .onTapGesture {
+                        Task { await viewModel.toggleRecording() }
+                    }
+                    Spacer()
+                }
+                .padding(.bottom, 32)
             }
+        }
+        .sheet(isPresented: $showShareSheet) {
+            ActivityViewControllerWrapper(activityItems: shareItems)
         }
     }
 
@@ -296,10 +318,3 @@ struct RecordingView: View {
     }
 }
 
-struct ActivityViewControllerWrapper: UIViewControllerRepresentable {
-    let activityItems: [Any]
-    func makeUIViewController(context: Context) -> UIActivityViewController {
-        UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
-    }
-    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
-}
