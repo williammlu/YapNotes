@@ -10,28 +10,27 @@ fileprivate extension Comparable {
     }
 }
 
-
 struct RecordingView: View {
     @StateObject private var viewModel = RecordingViewModel()
 
     let maxBarHeight: CGFloat = 200.0
 
-    /// A single offset from -sideMenuWidth to sideMenuWidth
-    /// Positive => left menu partially or fully in
-    /// Negative => right menu partially or fully in
+    // For partial sliding
     @State private var dragOffset: CGFloat = 0
+    @State private var isLeftOpen = false
+    @State private var isRightOpen = false
 
     private let sideMenuWidth: CGFloat = 250
     private let animationDuration: Double = 0.3
 
-    // For auto-scroll logic in the yaps list
+    // For auto-scroll logic
     @State private var userHasScrolledUp = false
 
     // For share sheet
     @State private var showShareSheet = false
     @State private var shareItems: [Any] = []
 
-    // This function checks if the user wants to open or close at the end of a drag
+    // Decide final
     private func finalizeDrag() {
         if dragOffset > 0 {
             // Possibly open left
@@ -39,13 +38,18 @@ struct RecordingView: View {
                 withAnimation(.easeOut(duration: animationDuration)) {
                     dragOffset = sideMenuWidth
                 }
+                isLeftOpen = true
+                isRightOpen = false
                 if viewModel.isRecording {
                     Task { await viewModel.recorder?.stopRecording() }
                 }
             } else {
+                // Snap closed
                 withAnimation(.easeOut(duration: animationDuration)) {
                     dragOffset = 0
                 }
+                isLeftOpen = false
+                isRightOpen = false
             }
         } else if dragOffset < 0 {
             // Possibly open right
@@ -53,18 +57,27 @@ struct RecordingView: View {
                 withAnimation(.easeOut(duration: animationDuration)) {
                     dragOffset = -sideMenuWidth
                 }
+                isRightOpen = true
+                isLeftOpen = false
                 if viewModel.isRecording {
                     Task { await viewModel.recorder?.stopRecording() }
                 }
             } else {
+                // Snap closed
                 withAnimation(.easeOut(duration: animationDuration)) {
                     dragOffset = 0
                 }
+                isLeftOpen = false
+                isRightOpen = false
             }
+        } else {
+            // Ended near zero => fully closed
+            isLeftOpen = false
+            isRightOpen = false
         }
     }
 
-    // Doggy icon name based on amplitude
+    // Doggy icon
     private var doggyIconName: String {
         let amp = viewModel.currentAmplitude
         if amp < 0.02 { return "doggy-sound-0" }
@@ -79,13 +92,12 @@ struct RecordingView: View {
             SessionSidebarView {
                 withAnimation(.easeOut(duration: animationDuration)) {
                     dragOffset = 0
+                    isLeftOpen = false
+                    isRightOpen = false
                 }
             }
             .frame(width: sideMenuWidth)
-            // We'll offset the left menu so it slides from off-screen to on-screen
             .offset(x: dragOffset - sideMenuWidth)
-            // e.g., if dragOffset=0 => offset is -250 (off screen)
-            // if dragOffset=250 => offset is 0 => fully on screen
 
             // RIGHT MENU
             HStack {
@@ -93,19 +105,21 @@ struct RecordingView: View {
                 SettingsView {
                     withAnimation(.easeOut(duration: animationDuration)) {
                         dragOffset = 0
+                        isLeftOpen = false
+                        isRightOpen = false
                     }
                 }
                 .frame(width: sideMenuWidth)
-                // We want if dragOffset = -250 => offset=0 => fully on
-                // if dragOffset=0 => offset=+250 => off screen
                 .offset(x: sideMenuWidth + dragOffset)
             }
 
             // MAIN CONTENT
             ZStack {
                 Color.orange.ignoresSafeArea()
+
                 mainContent
 
+                // Overlay if partially open
                 if dragOffset != 0 {
                     Color.black
                         .opacity(0.3 * Double(abs(dragOffset) / sideMenuWidth))
@@ -113,6 +127,8 @@ struct RecordingView: View {
                         .onTapGesture {
                             withAnimation(.easeOut(duration: animationDuration)) {
                                 dragOffset = 0
+                                isLeftOpen = false
+                                isRightOpen = false
                             }
                         }
                 }
@@ -121,10 +137,21 @@ struct RecordingView: View {
             .gesture(
                 DragGesture()
                     .onChanged { value in
-                        let newOffset = value.translation.width
-                        // use our clamp extension
-                        let clamped = newOffset.clamped(to: -sideMenuWidth ... sideMenuWidth)
-                        dragOffset = clamped
+                        // We compute a base offset depending on which side is open
+                        // or none. If left is open => base=+250, if right => -250, else 0.
+                        // Then we add the current drag translation.
+                        let base: CGFloat
+                        if isLeftOpen {
+                            base = sideMenuWidth
+                        } else if isRightOpen {
+                            base = -sideMenuWidth
+                        } else {
+                            base = 0
+                        }
+
+                        // total offset
+                        let newOffset = base + value.translation.width
+                        dragOffset = newOffset.clamped(to: -sideMenuWidth ... sideMenuWidth)
                     }
                     .onEnded { _ in
                         finalizeDrag()
@@ -140,13 +167,18 @@ struct RecordingView: View {
         VStack(spacing: 10) {
             // Top row
             HStack {
-                // Left button
+                // Left toggle
                 Button {
                     withAnimation(.easeOut(duration: animationDuration)) {
-                        if dragOffset == sideMenuWidth {
+                        if isLeftOpen {
+                            // close
                             dragOffset = 0
+                            isLeftOpen = false
                         } else {
+                            // open left
                             dragOffset = sideMenuWidth
+                            isLeftOpen = true
+                            isRightOpen = false
                             if viewModel.isRecording {
                                 Task { await viewModel.recorder?.stopRecording() }
                             }
@@ -169,13 +201,18 @@ struct RecordingView: View {
 
                 Spacer()
 
-                // Right button
+                // Right toggle
                 Button {
                     withAnimation(.easeOut(duration: animationDuration)) {
-                        if dragOffset == -sideMenuWidth {
+                        if isRightOpen {
+                            // close
                             dragOffset = 0
+                            isRightOpen = false
                         } else {
+                            // open right
                             dragOffset = -sideMenuWidth
+                            isRightOpen = true
+                            isLeftOpen = false
                             if viewModel.isRecording {
                                 Task { await viewModel.recorder?.stopRecording() }
                             }
@@ -189,6 +226,7 @@ struct RecordingView: View {
             }
             .padding([.leading, .trailing, .top], 24)
 
+            // The rest
             ScrollView {
                 Text(viewModel.yaps.map(\.text).joined(separator: " "))
                     .foregroundColor(.white)
@@ -196,11 +234,8 @@ struct RecordingView: View {
             }
             .frame(maxHeight: .infinity)
 
-            BarWaveformView(
-                barAmplitudes: viewModel.barAmplitudes,
-                maxBarHeight: maxBarHeight
-            )
-            .frame(height: maxBarHeight)
+            BarWaveformView(barAmplitudes: viewModel.barAmplitudes, maxBarHeight: maxBarHeight)
+                .frame(height: maxBarHeight)
 
             Spacer().frame(height: 10)
 
@@ -279,11 +314,12 @@ struct RecordingView: View {
                     Spacer()
                     ZStack {
                         Circle()
-                            .fill(viewModel.isRecording ? Color.white : Color.red)
+                            .fill(viewModel.isRecording ? .white : .red)
                             .frame(width: 70, height: 70)
                         Circle()
-                            .stroke(Color.white, lineWidth: 2)
+                            .stroke(.white, lineWidth: 2)
                             .frame(width: 74, height: 74)
+
                         if viewModel.isRecording {
                             Image(systemName: "pause.fill")
                                 .foregroundColor(.red)
