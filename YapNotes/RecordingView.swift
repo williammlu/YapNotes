@@ -1,34 +1,70 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
+fileprivate extension Comparable {
+    /// Clamps the value to a closed range
+    func clamped(to range: ClosedRange<Self>) -> Self {
+        if self < range.lowerBound { return range.lowerBound }
+        if self > range.upperBound { return range.upperBound }
+        return self
+    }
+}
+
+
 struct RecordingView: View {
     @StateObject private var viewModel = RecordingViewModel()
 
     let maxBarHeight: CGFloat = 200.0
 
-    // We'll remove showLeftMenu / showRightMenu booleans,
-    // and replace them with a single drag offset that can be from -250...0...250
-    // to represent side drawer states. The "open" states are offset == 250 (left) or -250 (right).
+    /// A single offset from -sideMenuWidth to sideMenuWidth
+    /// Positive => left menu partially or fully in
+    /// Negative => right menu partially or fully in
+    @State private var dragOffset: CGFloat = 0
 
-    @State private var dragOffset: CGFloat = 0 // Real-time offset from center
-    private var dragFactor: CGFloat = 0.025
+    private let sideMenuWidth: CGFloat = 250
+    private let animationDuration: Double = 0.3
 
-    // For auto-scroll logic
+    // For auto-scroll logic in the yaps list
     @State private var userHasScrolledUp = false
 
     // For share sheet
     @State private var showShareSheet = false
     @State private var shareItems: [Any] = []
 
-    // Constants
-    private let sideMenuWidth: CGFloat = 250
-    private let animationDuration: Double = 0.3
+    // This function checks if the user wants to open or close at the end of a drag
+    private func finalizeDrag() {
+        if dragOffset > 0 {
+            // Possibly open left
+            if dragOffset > sideMenuWidth / 2 {
+                withAnimation(.easeOut(duration: animationDuration)) {
+                    dragOffset = sideMenuWidth
+                }
+                if viewModel.isRecording {
+                    Task { await viewModel.recorder?.stopRecording() }
+                }
+            } else {
+                withAnimation(.easeOut(duration: animationDuration)) {
+                    dragOffset = 0
+                }
+            }
+        } else if dragOffset < 0 {
+            // Possibly open right
+            if abs(dragOffset) > sideMenuWidth / 2 {
+                withAnimation(.easeOut(duration: animationDuration)) {
+                    dragOffset = -sideMenuWidth
+                }
+                if viewModel.isRecording {
+                    Task { await viewModel.recorder?.stopRecording() }
+                }
+            } else {
+                withAnimation(.easeOut(duration: animationDuration)) {
+                    dragOffset = 0
+                }
+            }
+        }
+    }
 
-    // If offset == sideMenuWidth, left drawer is "open"
-    // If offset == -sideMenuWidth, right drawer is "open"
-    // If offset == 0, none open
-
-    // Doggy icon name
+    // Doggy icon name based on amplitude
     private var doggyIconName: String {
         let amp = viewModel.currentAmplitude
         if amp < 0.02 { return "doggy-sound-0" }
@@ -37,55 +73,45 @@ struct RecordingView: View {
         else { return "doggy-sound-3" }
     }
 
-    // A helper to check if left is open
-    private var isLeftOpen: Bool {
-        dragOffset == sideMenuWidth
-    }
-    // Right open
-    private var isRightOpen: Bool {
-        dragOffset == -sideMenuWidth
-    }
-
     var body: some View {
         ZStack(alignment: .leading) {
-            // Left side menu
+            // LEFT MENU
             SessionSidebarView {
-                // Tapping "Close" => animate offset to 0
-                withAnimation(.linear(duration: animationDuration)) {
+                withAnimation(.easeOut(duration: animationDuration)) {
                     dragOffset = 0
                 }
             }
             .frame(width: sideMenuWidth)
-            .offset(x: dragOffset >= 0 ? 0 : -sideMenuWidth) // If offset < 0, hide left menu
-            // We only show the left menu if dragOffset > 0
+            // We'll offset the left menu so it slides from off-screen to on-screen
+            .offset(x: dragOffset - sideMenuWidth)
+            // e.g., if dragOffset=0 => offset is -250 (off screen)
+            // if dragOffset=250 => offset is 0 => fully on screen
 
-            // Right side menu
+            // RIGHT MENU
             HStack {
                 Spacer()
                 SettingsView {
-                    withAnimation(.linear(duration: animationDuration)) {
+                    withAnimation(.easeOut(duration: animationDuration)) {
                         dragOffset = 0
                     }
                 }
                 .frame(width: sideMenuWidth)
-                // We only show the right menu if dragOffset < 0
-                .offset(x: dragOffset <= 0 ? 0 : sideMenuWidth)
+                // We want if dragOffset = -250 => offset=0 => fully on
+                // if dragOffset=0 => offset=+250 => off screen
+                .offset(x: sideMenuWidth + dragOffset)
             }
 
-            // Main content with partial offset
+            // MAIN CONTENT
             ZStack {
                 Color.orange.ignoresSafeArea()
+                mainContent
 
-                mainCenterContent
-
-                // If offset != 0, show overlay (i.e. user is partially or fully opening a menu)
                 if dragOffset != 0 {
                     Color.black
-                        .opacity(0.3 * Double(abs(dragOffset / sideMenuWidth)))
+                        .opacity(0.3 * Double(abs(dragOffset) / sideMenuWidth))
                         .ignoresSafeArea()
                         .onTapGesture {
-                            // Tapping overlay => close
-                            withAnimation(.linear(duration: animationDuration)) {
+                            withAnimation(.easeOut(duration: animationDuration)) {
                                 dragOffset = 0
                             }
                         }
@@ -95,61 +121,29 @@ struct RecordingView: View {
             .gesture(
                 DragGesture()
                     .onChanged { value in
-                        // Live update the offset
-                        // We clamp dragOffset between -sideMenuWidth...sideMenuWidth
-                        let newOffset = (value.translation.width) // - math.clamp(value.translation.width, -20, 20)
-                        print(newOffset, " ", isLeftOpen, isRightOpen)
-                        dragOffset = max(-sideMenuWidth, min(sideMenuWidth, newOffset))
+                        let newOffset = value.translation.width
+                        // use our clamp extension
+                        let clamped = newOffset.clamped(to: -sideMenuWidth ... sideMenuWidth)
+                        dragOffset = clamped
                     }
-                    .onEnded { value in
-                        // In onEnded, decide final position
-                        // If user was near left edge or the offset > 0 => possibly open left
-                        if dragOffset > 0 {
-                            // if dragOffset > half of sideMenuWidth, snap open. else snap closed
-                            if dragOffset > sideMenuWidth / 2 {
-                                withAnimation(.smooth(duration: animationDuration)) {
-                                    dragOffset = sideMenuWidth
-                                }
-                                // Pause if needed
-                                if viewModel.isRecording {
-                                    Task { await viewModel.recorder?.stopRecording() }
-                                }
-                            } else {
-                                withAnimation(.easeInOut(duration: animationDuration)) {
-                                    dragOffset = 0
-                                }
-                            }
-                        }
-                        // If user was near right edge or the offset < 0 => possibly open right
-                        else if dragOffset < 0 {
-                            if abs(dragOffset) > (sideMenuWidth / 2) {
-                                withAnimation(.easeInOut(duration: animationDuration)) {
-                                    dragOffset = -sideMenuWidth
-                                }
-                                // Pause if needed
-                                if viewModel.isRecording {
-                                    Task { await viewModel.recorder?.stopRecording() }
-                                }
-                            } else {
-                                withAnimation(.easeInOut(duration: animationDuration)) {
-                                    dragOffset = 0
-                                }
-                            }
-                        }
+                    .onEnded { _ in
+                        finalizeDrag()
                     }
             )
         }
+        .sheet(isPresented: $showShareSheet) {
+            ActivityViewControllerWrapper(activityItems: shareItems)
+        }
     }
 
-    private var mainCenterContent: some View {
+    private var mainContent: some View {
         VStack(spacing: 10) {
             // Top row
             HStack {
-                // Folder -> if we are not open on the left, animate to left
-                // or close if open
+                // Left button
                 Button {
-                    withAnimation(.linear(duration: animationDuration)) {
-                        if isLeftOpen {
+                    withAnimation(.easeOut(duration: animationDuration)) {
+                        if dragOffset == sideMenuWidth {
                             dragOffset = 0
                         } else {
                             dragOffset = sideMenuWidth
@@ -175,10 +169,10 @@ struct RecordingView: View {
 
                 Spacer()
 
-                // Gear -> open right or close
+                // Right button
                 Button {
-                    withAnimation(.linear(duration: animationDuration)) {
-                        if isRightOpen {
+                    withAnimation(.easeOut(duration: animationDuration)) {
+                        if dragOffset == -sideMenuWidth {
                             dragOffset = 0
                         } else {
                             dragOffset = -sideMenuWidth
@@ -195,15 +189,13 @@ struct RecordingView: View {
             }
             .padding([.leading, .trailing, .top], 24)
 
-            // Single text with all yaps
             ScrollView {
-                Text(allYapsConcatenated)
+                Text(viewModel.yaps.map(\.text).joined(separator: " "))
                     .foregroundColor(.white)
                     .padding()
             }
             .frame(maxHeight: .infinity)
 
-            // Waveform
             BarWaveformView(
                 barAmplitudes: viewModel.barAmplitudes,
                 maxBarHeight: maxBarHeight
@@ -212,7 +204,6 @@ struct RecordingView: View {
 
             Spacer().frame(height: 10)
 
-            // Yaps list
             ScrollViewReader { proxy in
                 ScrollView(showsIndicators: true) {
                     if !viewModel.yaps.isEmpty {
@@ -241,8 +232,8 @@ struct RecordingView: View {
                                     Label("Copy", systemImage: "doc.on.doc")
                                 }
                                 Button {
-                                    shareItems = [yap.text]
                                     showShareSheet = true
+                                    shareItems = [yap.text]
                                 } label: {
                                     Label("Share", systemImage: "square.and.arrow.up")
                                 }
@@ -282,7 +273,6 @@ struct RecordingView: View {
                 }
             }
 
-            // Record button pinned at bottom
             VStack {
                 Spacer()
                 HStack {
@@ -308,13 +298,5 @@ struct RecordingView: View {
                 .padding(.bottom, 32)
             }
         }
-        .sheet(isPresented: $showShareSheet) {
-            ActivityViewControllerWrapper(activityItems: shareItems)
-        }
-    }
-
-    private var allYapsConcatenated: String {
-        viewModel.yaps.map { $0.text }.joined(separator: " ")
     }
 }
-
