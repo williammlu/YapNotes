@@ -3,6 +3,7 @@ import SwiftUI
 struct SessionSidebarView: View {
     // Called when user taps “Close” in the top bar
     var onSessionClose: () -> Void
+    @ObservedObject var viewModel: RecordingViewModel
 
     @State private var sessions: [SessionMetadata] = []
     @State private var selectedSession: SessionMetadata?
@@ -24,28 +25,33 @@ struct SessionSidebarView: View {
                 }
                 .padding(.horizontal, 24)
                 .padding(.top, 8)
+                
+                Button(action: {
+                    Task {
+                        await viewModel.endSession()
+                        loadSessions()
+                    }
+                }) {
+                    Label("New Session", systemImage: "plus")
+                        .font(.subheadline)
+                }
+                .buttonStyle(.borderedProminent)
+                .padding(.horizontal, 24)
 
                 // iOS 15+ approach with List & .swipeActions
                 List {
                     ForEach(sessions, id: \.id) { session in
-                        VStack(alignment: .leading) {
-                            Text(session.id)
-                                .font(.headline)
-                            Text("Started: \(session.startTime.formatted(date: .abbreviated, time: .shortened))")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                        .onTapGesture {
-                            selectedSession = session
-                        }
-                        // Attach swipeActions
-                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                            Button(role: .destructive) {
-                                deleteSession(session)
-                            } label: {
-                                Label("Delete", systemImage: "trash")
+                        SessionRowView(session: session)
+                            .onTapGesture {
+                                selectedSession = session
                             }
-                        }
+                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                Button(role: .destructive) {
+                                    deleteSession(session)
+                                } label: {
+                                    Label("Delete", systemImage: "trash")
+                                }
+                            }
                     }
                 }
                 .listStyle(.inset)
@@ -53,13 +59,16 @@ struct SessionSidebarView: View {
             .padding(.top, 20)
         }
         .onAppear { loadSessions() }
+        .onReceive(Timer.publish(every: 3, on: .main, in: .common).autoconnect()) { _ in
+            loadSessions()
+        }
         .sheet(item: $selectedSession) { session in
             SessionDetailView(session: session)
         }
     }
 
     private func loadSessions() {
-        sessions = SessionManager.shared.loadAllSessions()
+        sessions = SessionManager.shared.loadAllSessions().sorted { $0.startTime > $1.startTime }
     }
 
     private func deleteSession(_ session: SessionMetadata) {
@@ -71,6 +80,35 @@ struct SessionSidebarView: View {
         // Suppose you add a function "SessionManager.shared.deleteSession(_ session: SessionMetadata)" 
         // that removes the folder from disk
         SessionManager.shared.deleteSession(session)
+    }
+}
+
+// Custom row view for a session
+struct SessionRowView: View {
+    let session: SessionMetadata
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Image(systemName: "doc.plaintext")
+                    .foregroundColor(.orange)
+                Text(session.id)
+                    .font(.headline)
+                Spacer()
+                Text(session.startTime.formatted(date: .abbreviated, time: .shortened))
+                    .font(.caption)
+                    .foregroundColor(.gray)
+            }
+            if let preview = session.chunks.last?.text, !preview.isEmpty {
+                Text("\"\(preview.prefix(40))\"")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+            }
+        }
+        .padding(12)
+        .background(Color.white.opacity(0.05))
+        .cornerRadius(10)
     }
 }
 

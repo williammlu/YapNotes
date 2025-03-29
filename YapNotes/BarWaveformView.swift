@@ -1,4 +1,3 @@
-//
 //  BarWaveformView.swift
 //  YapNotes
 //

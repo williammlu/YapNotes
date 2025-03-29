@@ -239,6 +239,27 @@ class RecordingViewModel: ObservableObject {
         }
     }
 
+    func endSession() async {
+        if isRecording {
+            await stopRecording()
+        }
+        saveCurrentSessionMetadata()
+        yaps.removeAll()
+        transcribedText = ""
+        currentYapSamples.removeAll()
+        silentFrameCount = 0
+        yapHasSpeech = false
+        yapIndex = 0
+
+        do {
+            let (folderURL, meta) = try SessionManager.shared.createNewSessionFolder()
+            currentSessionFolder = folderURL
+            currentSessionMetadata = meta
+        } catch {
+            print("Failed to create new session folder: \(error)")
+        }
+    }
+
     private func finalizeYap(force: Bool) {
         let now = Date()
         let duration = now.timeIntervalSince(yapStartTime ?? now)
@@ -293,6 +314,7 @@ class RecordingViewModel: ObservableObject {
                     await MainActor.run {
                         self.yaps.append(yapInfo)
                     }
+                    saveCurrentSessionMetadata()
                     // Also add to session metadata
                     if var meta = currentSessionMetadata {
                         let chunkMeta = ChunkMetadata(
@@ -322,7 +344,7 @@ class RecordingViewModel: ObservableObject {
     }
 
     /// Save the updated metadata.json for current session
-    private func saveCurrentSessionMetadata() {
+    func saveCurrentSessionMetadata() {
         guard let folder = currentSessionFolder,
               let meta = currentSessionMetadata else { return }
         SessionManager.shared.saveMetadata(meta, inFolder: folder)

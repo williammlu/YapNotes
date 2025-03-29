@@ -101,22 +101,24 @@ struct RecordingView: View {
             return "doggy-sound-1"
         case ..<0.075:
             return "doggy-sound-2"
-        default:
-            return "doggy-sound-3"
-        }
+    default:
+        return "doggy-sound-3"
+    }
     }
 
     var body: some View {
         ZStack(alignment: .leading) {
             // Left menu
-            SessionSidebarView {
-                // Close side menu
-                withAnimation(.easeOut(duration: animationDuration)) {
-                    dragOffset = 0
-                    isLeftOpen = false
-                    isRightOpen = false
-                }
-            }
+            SessionSidebarView(
+                onSessionClose: {
+                    withAnimation(.easeOut(duration: animationDuration)) {
+                        dragOffset = 0
+                        isLeftOpen = false
+                        isRightOpen = false
+                    }
+                },
+                viewModel: viewModel
+            )
             .frame(width: sideMenuWidth)
             .offset(x: dragOffset - sideMenuWidth)
 
@@ -191,6 +193,9 @@ struct RecordingView: View {
         }
         .sheet(isPresented: $showShareSheet) {
             ActivityViewControllerWrapper(activityItems: shareItems)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)) { _ in
+            viewModel.saveCurrentSessionMetadata()
         }
     }
 
