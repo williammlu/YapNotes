@@ -1,11 +1,3 @@
-//
-//  SessionManager.swift
-//  YapNotes
-//
-//  Created by William Lu on 3/25/25.
-//
-
-
 import Foundation
 
 /// Simple struct to describe one finalized chunk
@@ -75,8 +67,6 @@ class SessionManager {
             print("Error loading sessions: \(error)")
         }
 
-        // Sort by startTime descending or ascending, your choice:
-        // results.sort { $0.startTime > $1.startTime }
         return results
     }
 
@@ -88,6 +78,19 @@ class SessionManager {
             try data.write(to: metaURL)
         } catch {
             print("Error writing metadata: \(error)")
+        }
+    }
+
+    /// Delete a session's folder (including metadata.json & any WAV files)
+    func deleteSession(_ session: SessionMetadata) {
+        do {
+            let root = try getRecordingsDirectory()
+            let folderURL = root.appendingPathComponent(session.id)
+            if FileManager.default.fileExists(atPath: folderURL.path) {
+                try FileManager.default.removeItem(at: folderURL)
+            }
+        } catch {
+            print("Error removing session folder for \(session.id): \(error)")
         }
     }
 
