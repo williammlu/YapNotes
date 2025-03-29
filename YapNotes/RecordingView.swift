@@ -14,6 +14,12 @@ struct RecordingView: View {
     @StateObject private var viewModel = RecordingViewModel()
 
     private let debugModeEnabled: Bool = false
+    @State private var selectedTab: TabType = .transcribe
+
+    private enum TabType: String, CaseIterable {
+        case transcribe = "Transcribe"
+        case generate = "Generate"
+    }
 
     // For partial sliding
     @State private var dragOffset: CGFloat = 0
@@ -246,73 +252,96 @@ struct RecordingView: View {
             }
             .frame(height: 56)
 
-            // Middle text scroller
-            ScrollView {
-                Text(viewModel.yaps.map(\.text).joined(separator: " "))
-                    .foregroundColor(.white)
-                    .padding()
+            HStack {
+                ForEach(TabType.allCases, id: \.self) { tab in
+                    Button(action: { selectedTab = tab }) {
+                        Text(tab.rawValue)
+                            .fontWeight(selectedTab == tab ? .bold : .regular)
+                            .padding(.vertical, 8)
+                            .frame(maxWidth: .infinity)
+                            .foregroundColor(selectedTab == tab ? .white : .white.opacity(0.6))
+                            .background(
+                                selectedTab == tab ? Color.white.opacity(0.1) : Color.clear
+                            )
+                            .cornerRadius(8)
+                    }
+                }
             }
-            .frame(maxHeight: .infinity, alignment: .top)
-            .padding(.bottom, 16)
+            .padding(.horizontal, 24)
 
-            // Yaps list
-            if debugModeEnabled {
-                if viewModel.yaps.isEmpty {
-                    Text("No yaps recorded yet.")
+            // Middle text scroller
+            if selectedTab == .transcribe {
+                ScrollView {
+                    Text(viewModel.yaps.map(\.text).joined(separator: " "))
                         .foregroundColor(.white)
                         .padding()
-                } else {
-                    ScrollViewReader { proxy in
-                        ScrollView(showsIndicators: true) {
-                            ForEach(viewModel.yaps) { yap in
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text("Yap #\(yap.index) — \(String(format: "%.2f", yap.duration))s")
-                                        .foregroundColor(.yellow)
-                                        .font(.subheadline)
-                                    Text(yap.text)
-                                        .foregroundColor(.white)
-                                }
-                                .padding()
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .background(Color.gray.opacity(0.2))
-                                .cornerRadius(10)
-                                .padding(.horizontal, 24)
-                                .padding(.bottom, 4)
-                                .id(yap.id)
-                                .onTapGesture {
-                                    viewModel.playYapAudio(yap)
-                                }
-                                .contextMenu {
-                                    Button {
-                                        UIPasteboard.general.string = yap.text
-                                    } label: {
-                                        Label("Copy", systemImage: "doc.on.doc")
+                }
+                .frame(maxHeight: .infinity, alignment: .top)
+                .padding(.bottom, 16)
+
+                // Yaps list
+                if debugModeEnabled {
+                    if viewModel.yaps.isEmpty {
+                        Text("No yaps recorded yet.")
+                            .foregroundColor(.white)
+                            .padding()
+                    } else {
+                        ScrollViewReader { proxy in
+                            ScrollView(showsIndicators: true) {
+                                ForEach(viewModel.yaps) { yap in
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text("Yap #\(yap.index) — \(String(format: "%.2f", yap.duration))s")
+                                            .foregroundColor(.yellow)
+                                            .font(.subheadline)
+                                        Text(yap.text)
+                                            .foregroundColor(.white)
                                     }
-                                    Button {
-                                        showShareSheet = true
-                                        shareItems = [yap.text]
-                                    } label: {
-                                        Label("Share", systemImage: "square.and.arrow.up")
+                                    .padding()
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .background(Color.gray.opacity(0.2))
+                                    .cornerRadius(10)
+                                    .padding(.horizontal, 24)
+                                    .padding(.bottom, 4)
+                                    .id(yap.id)
+                                    .onTapGesture {
+                                        viewModel.playYapAudio(yap)
+                                    }
+                                    .contextMenu {
+                                        Button {
+                                            UIPasteboard.general.string = yap.text
+                                        } label: {
+                                            Label("Copy", systemImage: "doc.on.doc")
+                                        }
+                                        Button {
+                                            showShareSheet = true
+                                            shareItems = [yap.text]
+                                        } label: {
+                                            Label("Share", systemImage: "square.and.arrow.up")
+                                        }
                                     }
                                 }
                             }
-                        }
-                        .onPreferenceChange(BottomOffsetPreferenceKey.self) { offset in
-                            let screenHeight = UIScreen.main.bounds.height
-                            let threshold = screenHeight * 1.2
-                            userHasScrolledUp = (offset < -threshold)
-                        }
-                        .onChange(of: viewModel.yaps) { _ in
-                            if !userHasScrolledUp {
-                                DispatchQueue.main.async {
-                                    withAnimation {
-                                        proxy.scrollTo("BOTTOM", anchor: .bottom)
+                            .onPreferenceChange(BottomOffsetPreferenceKey.self) { offset in
+                                let screenHeight = UIScreen.main.bounds.height
+                                let threshold = screenHeight * 1.2
+                                userHasScrolledUp = (offset < -threshold)
+                            }
+                            .onChange(of: viewModel.yaps) { _ in
+                                if !userHasScrolledUp {
+                                    DispatchQueue.main.async {
+                                        withAnimation {
+                                            proxy.scrollTo("BOTTOM", anchor: .bottom)
+                                        }
                                     }
                                 }
                             }
                         }
                     }
                 }
+            } else {
+                Text("Coming soon: Generation mode")
+                    .foregroundColor(.white.opacity(0.7))
+                    .padding()
             }
 
             if viewModel.isProcessing {
