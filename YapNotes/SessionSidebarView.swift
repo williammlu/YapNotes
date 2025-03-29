@@ -1,4 +1,4 @@
-<file name=2 path=SessionSidebarView.swift>import SwiftUI
+import SwiftUI
 
 struct SessionSidebarView: View {
     // Called when user taps “Close” in the top bar
@@ -151,4 +151,3 @@ struct SessionDetailView: View {
         }
     }
 }
-</file>

@@ -41,7 +41,7 @@ struct RecordingView: View {
     private func finalizeDrag() {
         // If offset is > 0, we consider left side open or close
         if dragOffset > 0 {
-            if dragOffset > sideMenuWidth / 2 {
+            if dragOffset > sideMenuWidth * UIConstants.sideMenuSwipeThreshold {
                 withAnimation(.easeOut(duration: animationDuration)) {
                     dragOffset = sideMenuWidth
                 }
@@ -60,7 +60,7 @@ struct RecordingView: View {
         }
         // If offset < 0, we consider right side
         else if dragOffset < 0 {
-            if abs(dragOffset) > sideMenuWidth / 2 {
+            if abs(dragOffset) > sideMenuWidth * UIConstants.sideMenuSwipeThreshold {
                 withAnimation(.easeOut(duration: animationDuration)) {
                     dragOffset = -sideMenuWidth
                 }
