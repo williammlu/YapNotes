@@ -57,7 +57,7 @@ struct RecordingView: View {
 
     // For share sheet
     @State private var showShareSheet = false
-    @State private var shareItems: [Any] = []
+    @State private var shareContent: String = ""
 
     // Decide final offset after drag ends
     private func finalizeDrag() {
@@ -235,7 +235,6 @@ struct RecordingView: View {
                         if gestureDirectionLocked && isVerticalSwipe {
                         if verticalDrag >= UIConstants.shareActivationThreshold {
                             DispatchQueue.main.async {
-                                shareItems = [viewModel.yaps.map(\.text).joined(separator: " ")]
                                 showShareSheet = true
                             }
                             withAnimation(.easeOut(duration: animationDuration)) {
@@ -253,17 +252,26 @@ struct RecordingView: View {
                     }
             )
         }
-        .sheet(isPresented: $showShareSheet, onDismiss: {
+        .sheet(isPresented: Binding(
+            get: {
+                showShareSheet && !shareContent.isEmpty && shareContent.lengthOfBytes(using: .utf8) > 0
+            },
+            set: { showShareSheet = $0 }
+        ), onDismiss: {
             DispatchQueue.main.async {
                 withAnimation(.easeOut(duration: animationDuration)) {
                     verticalDrag = 0
                 }
             }
         }) {
-            ActivityViewControllerWrapper(activityItems: shareItems)
+            ActivityViewControllerWrapper(activityItems: [shareContent])
+                .presentationDetents([.medium, .large])
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)) { _ in
             viewModel.saveCurrentSessionMetadata()
+        }
+        .onChange(of: viewModel.yaps) { yaps in
+            shareContent = yaps.map(\.text).joined(separator: " ")
         }
     }
 
@@ -394,7 +402,7 @@ struct RecordingView: View {
                                         }
                                         Button {
                                             showShareSheet = true
-                                            shareItems = [yap.text]
+//                                            shareItems = yap.text
                                         } label: {
                                             Label("Share", systemImage: "square.and.arrow.up")
                                         }
