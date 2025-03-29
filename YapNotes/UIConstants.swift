@@ -13,4 +13,6 @@ enum UIConstants {
     static let subtleGrayBackground: Color = Color.gray.opacity(0.1)
     static let clearBackground: Color = .clear
     static let sideMenuSwipeThreshold: CGFloat = 0.33
+    static let shareActivationThreshold: CGFloat = 150
+    static let shareProgressStartThreshold: CGFloat = 50
 }

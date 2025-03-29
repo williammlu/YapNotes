@@ -1,6 +1,5 @@
 import SwiftUI
 import UniformTypeIdentifiers
-// No import needed — constants are available globally
 
 fileprivate extension Comparable {
     /// Clamps the value to a closed range
@@ -8,6 +7,26 @@ fileprivate extension Comparable {
         if self < range.lowerBound { return range.lowerBound }
         if self > range.upperBound { return range.upperBound }
         return self
+    }
+}
+
+struct SharePresenter: UIViewControllerRepresentable {
+    @Binding var shouldPresent: Bool
+    @Binding var items: [Any]
+
+    func makeUIViewController(context: Context) -> UIViewController {
+        UIViewController()
+    }
+
+    func updateUIViewController(_ uiViewController: UIViewController, context: Context) {
+        guard shouldPresent else { return }
+
+        let activityVC = UIActivityViewController(activityItems: items, applicationActivities: nil)
+        DispatchQueue.main.async {
+            uiViewController.present(activityVC, animated: true) {
+                shouldPresent = false
+            }
+        }
     }
 }
 
@@ -24,8 +43,11 @@ struct RecordingView: View {
 
     // For partial sliding
     @State private var dragOffset: CGFloat = 0
+    @State private var verticalDrag: CGFloat = 0
     @State private var isLeftOpen = false
     @State private var isRightOpen = false
+    @State private var gestureDirectionLocked: Bool = false
+    @State private var isVerticalSwipe: Bool = false
 
     private let sideMenuWidth: CGFloat = UIConstants.sideMenuWidth
     private let animationDuration: Double = 0.3
@@ -108,7 +130,28 @@ struct RecordingView: View {
     }
 
     var body: some View {
-        ZStack(alignment: .leading) {
+    ZStack(alignment: .leading) {
+        VStack {
+            Spacer()
+            HStack {
+                Spacer()
+                ZStack {
+                    Circle()
+                        .trim(from: 0, to: max(0, (verticalDrag - UIConstants.shareProgressStartThreshold) / (UIConstants.shareActivationThreshold - UIConstants.shareProgressStartThreshold)))
+                        .stroke(Color.green, style: StrokeStyle(lineWidth: 4, lineCap: .round))
+                        .frame(width: 60, height: 60)
+ 
+                    Image(systemName: "square.and.arrow.up")
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 28, height: 28)
+                        .foregroundColor(.gray)
+                }
+                Spacer()
+            }
+            .padding(.bottom, 28)
+        }
+        .zIndex(0)
             // Left menu
             SessionSidebarView(
                 onSessionClose: {
@@ -138,62 +181,85 @@ struct RecordingView: View {
                 .offset(x: sideMenuWidth + dragOffset)
             }
 
-            // Main content, including overlay
-            ZStack {
-                Color.orange.ignoresSafeArea()
-
-                mainContent
-
-                // The overlay is always in place, ignoring safe area
-                // (covers header + footer). We do NOT attach an explicit
-                // animation to 'overlayAlpha' on drag so there's no lag.
-                Color.black
-                    .opacity(overlayAlpha)
-                    .edgesIgnoringSafeArea(.all)
-                    // For direct dragging, we do no auto-animation
-                    // The open/close from the button triggers changes in dragOffset
-                    // with a withAnimation, so the alpha will also animate
-                    // but it won't be "delayed".
-                    .onTapGesture {
-                        // If user taps overlay => close
-                        withAnimation(.easeOut(duration: animationDuration)) {
-                            dragOffset = 0
-                            isLeftOpen = false
-                            isRightOpen = false
-                        }
+        // Main content
+        ZStack {
+            Color.orange.ignoresSafeArea()
+ 
+            mainContent
+            Color.black
+                .opacity(overlayAlpha)
+                .edgesIgnoringSafeArea(.all)
+                .onTapGesture {
+                    withAnimation(.easeOut(duration: animationDuration)) {
+                        dragOffset = 0
+                        isLeftOpen = false
+                        isRightOpen = false
                     }
-                    // Only allow taps if alpha is > ~0
-                    .allowsHitTesting(overlayAlpha > 0.01)
-            }
-            .offset(x: dragOffset)
+                }
+                .allowsHitTesting(overlayAlpha > 0.01)
+        }
+            .offset(x: dragOffset, y: -verticalDrag)
             .gesture(
-                DragGesture()
-                    // We'll do no .animation here, so the offset
-                    // moves 1:1 with the finger, no gap
+                DragGesture(minimumDistance: 10)
                     .onChanged { value in
                         let horizontal = abs(value.translation.width)
                         let vertical = abs(value.translation.height)
-
-                        guard horizontal > vertical else { return }
-
-                        let base: CGFloat
-                        if isLeftOpen {
-                            base = sideMenuWidth
-                        } else if isRightOpen {
-                            base = -sideMenuWidth
-                        } else {
-                            base = 0
+ 
+                        guard !gestureDirectionLocked else {
+                            if isVerticalSwipe {
+                            if !viewModel.yaps.isEmpty && !isLeftOpen && !isRightOpen && value.translation.height < 0 {
+                                    verticalDrag = min(abs(value.translation.height), UIConstants.shareActivationThreshold)
+                                }
+                            } else {
+                                let base: CGFloat
+                                if isLeftOpen {
+                                    base = sideMenuWidth
+                                } else if isRightOpen {
+                                    base = -sideMenuWidth
+                                } else {
+                                    base = 0
+                                }
+                                let newOffset = base + value.translation.width
+                                dragOffset = newOffset.clamped(to: -sideMenuWidth...sideMenuWidth)
+                            }
+                            return
                         }
-                        let newOffset = base + value.translation.width
-                        dragOffset = newOffset.clamped(to: -sideMenuWidth...sideMenuWidth)
-                        print("drag changed =>", dragOffset)
+ 
+                        // Lock direction once clear
+                        if horizontal >= 10 || vertical >= 10 {
+                            gestureDirectionLocked = true
+                            isVerticalSwipe = vertical > horizontal
+                        }
                     }
-                    .onEnded { _ in
-                        finalizeDrag()
+                    .onEnded { value in
+                        if gestureDirectionLocked && isVerticalSwipe {
+                        if verticalDrag >= UIConstants.shareActivationThreshold {
+                            DispatchQueue.main.async {
+                                shareItems = [viewModel.yaps.map(\.text).joined(separator: " ")]
+                                showShareSheet = true
+                            }
+                            withAnimation(.easeOut(duration: animationDuration)) {
+                                verticalDrag = UIConstants.shareActivationThreshold
+                            }
+                        } else {
+                            withAnimation(.easeOut(duration: animationDuration)) {
+                                verticalDrag = 0
+                            }
+                        }
+                        } else {
+                            finalizeDrag()
+                        }
+                        gestureDirectionLocked = false
                     }
             )
         }
-        .sheet(isPresented: $showShareSheet) {
+        .sheet(isPresented: $showShareSheet, onDismiss: {
+            DispatchQueue.main.async {
+                withAnimation(.easeOut(duration: animationDuration)) {
+                    verticalDrag = 0
+                }
+            }
+        }) {
             ActivityViewControllerWrapper(activityItems: shareItems)
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)) { _ in
