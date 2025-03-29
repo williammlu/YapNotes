@@ -1,47 +1,49 @@
-import SwiftUI
+<file name=2 path=SessionSidebarView.swift>import SwiftUI
 
 struct SessionSidebarView: View {
     // Called when user taps “Close” in the top bar
     var onSessionClose: () -> Void
     @ObservedObject var viewModel: RecordingViewModel
+    let currentSessionID: String?
 
     @State private var sessions: [SessionMetadata] = []
     @State private var selectedSession: SessionMetadata?
 
     var body: some View {
         ZStack(alignment: .leading) {
-            Color(.systemBackground)
-                .edgesIgnoringSafeArea(.vertical)
+            Color.orange.edgesIgnoringSafeArea(.vertical)
 
             VStack(alignment: .leading) {
-                // Title + close
+                // Title + new session button
                 HStack {
-                    Text("All Sessions")
-                        .font(.headline)
+                    Text("Yap Sessions")
+                        .font(.title2)
+                        .bold()
+                        .foregroundColor(.white)
                     Spacer()
-                    Button("Close") {
-                        onSessionClose()
+                    Button(action: {
+                        Task {
+                            await viewModel.endSession()
+                            loadSessions()
+                            onSessionClose()
+                        }
+                    }) {
+                        Image(systemName: "plus")
+                            .foregroundColor(.white)
+                            .font(.title3)
+                            .padding(6)
+                            .background(Color.white.opacity(0.15))
+                            .clipShape(Circle())
                     }
+                    .buttonStyle(.plain)
                 }
                 .padding(.horizontal, 24)
                 .padding(.top, 8)
-                
-                Button(action: {
-                    Task {
-                        await viewModel.endSession()
-                        loadSessions()
-                    }
-                }) {
-                    Label("New Session", systemImage: "plus")
-                        .font(.subheadline)
-                }
-                .buttonStyle(.borderedProminent)
-                .padding(.horizontal, 24)
 
                 // iOS 15+ approach with List & .swipeActions
                 List {
                     ForEach(sessions, id: \.id) { session in
-                        SessionRowView(session: session)
+                        SessionRowView(session: session, isCurrent: session.id == currentSessionID)
                             .onTapGesture {
                                 selectedSession = session
                             }
@@ -52,14 +54,18 @@ struct SessionSidebarView: View {
                                     Label("Delete", systemImage: "trash")
                                 }
                             }
+                            .listRowBackground(Color.clear)
                     }
                 }
-                .listStyle(.inset)
+                .listStyle(PlainListStyle())
+                .scrollContentBackground(.hidden)
+                .background(Color.white) // Updated background color
             }
             .padding(.top, 20)
         }
+        .frame(width: UIConstants.sideMenuWidth)
         .onAppear { loadSessions() }
-        .onReceive(Timer.publish(every: 3, on: .main, in: .common).autoconnect()) { _ in
+        .onReceive(NotificationCenter.default.publisher(for: .sessionMetadataDidUpdate)) { _ in
             loadSessions()
         }
         .sheet(item: $selectedSession) { session in
@@ -77,8 +83,6 @@ struct SessionSidebarView: View {
             sessions.remove(at: idx)
         }
         // 2. Also remove physically if you want from disk, e.g. SessionManager method
-        // Suppose you add a function "SessionManager.shared.deleteSession(_ session: SessionMetadata)" 
-        // that removes the folder from disk
         SessionManager.shared.deleteSession(session)
     }
 }
@@ -86,28 +90,30 @@ struct SessionSidebarView: View {
 // Custom row view for a session
 struct SessionRowView: View {
     let session: SessionMetadata
+    let isCurrent: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Image(systemName: "doc.plaintext")
-                    .foregroundColor(.orange)
-                Text(session.id)
+            if let first = session.chunks.first {
+                Text("\"\(first.text.prefix(40))\"")
                     .font(.headline)
-                Spacer()
-                Text(session.startTime.formatted(date: .abbreviated, time: .shortened))
-                    .font(.caption)
-                    .foregroundColor(.gray)
+                    .foregroundColor(.black) // Updated text color
             }
-            if let preview = session.chunks.last?.text, !preview.isEmpty {
-                Text("\"\(preview.prefix(40))\"")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-                    .lineLimit(1)
+            Text(session.startTime.formatted(date: .abbreviated, time: .shortened))
+                .font(.caption)
+                .foregroundColor(.gray)
+            if isCurrent {
+                Text("Current")
+                    .font(.caption2)
+                    .foregroundColor(.black) // Updated text color
+                    .padding(4)
+                    .background(Color.orange.opacity(0.3)) // Updated background opacity
+                    .cornerRadius(4)
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
-        .background(Color.white.opacity(0.05))
+        .background(Color.gray.opacity(0.1)) // Updated background color
         .cornerRadius(10)
     }
 }
@@ -122,15 +128,19 @@ struct SessionDetailView: View {
                 VStack(alignment: .leading, spacing: 12) {
                     Text("Session: \(session.id)")
                         .font(.title2)
+                        .foregroundColor(.white)
                     Text("Started: \(session.startTime.formatted(date: .abbreviated, time: .shortened))")
                         .font(.subheadline)
-                        .foregroundColor(.secondary)
+                        .foregroundColor(.gray)
                     Divider()
                     ForEach(session.chunks, id: \.index) { chunk in
                         VStack(alignment: .leading, spacing: 4) {
                             Text("Chunk #\(chunk.index)").bold()
+                                .foregroundColor(.white)
                             Text("Duration: \(chunk.duration, specifier: "%.2f")s")
+                                .foregroundColor(.gray)
                             Text(chunk.text)
+                                .foregroundColor(.white)
                         }
                         .padding(.bottom, 6)
                     }
@@ -141,3 +151,4 @@ struct SessionDetailView: View {
         }
     }
 }
+</file>

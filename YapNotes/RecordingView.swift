@@ -1,5 +1,6 @@
 import SwiftUI
 import UniformTypeIdentifiers
+// No import needed — constants are available globally
 
 fileprivate extension Comparable {
     /// Clamps the value to a closed range
@@ -26,7 +27,7 @@ struct RecordingView: View {
     @State private var isLeftOpen = false
     @State private var isRightOpen = false
 
-    private let sideMenuWidth: CGFloat = 250
+    private let sideMenuWidth: CGFloat = UIConstants.sideMenuWidth
     private let animationDuration: Double = 0.3
 
     // For auto-scroll logic
@@ -117,7 +118,8 @@ struct RecordingView: View {
                         isRightOpen = false
                     }
                 },
-                viewModel: viewModel
+                viewModel: viewModel,
+                currentSessionID: viewModel.currentSessionMetadata?.id
             )
             .frame(width: sideMenuWidth)
             .offset(x: dragOffset - sideMenuWidth)

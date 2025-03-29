@@ -76,6 +76,7 @@ class SessionManager {
         do {
             let data = try JSONEncoder().encode(metadata)
             try data.write(to: metaURL)
+            NotificationCenter.default.post(name: .sessionMetadataDidUpdate, object: nil)
         } catch {
             print("Error writing metadata: \(error)")
         }
@@ -103,4 +104,8 @@ class SessionManager {
         }
         return recDir
     }
+}
+
+extension Notification.Name {
+    static let sessionMetadataDidUpdate = Notification.Name("sessionMetadataDidUpdate")
 }

@@ -52,7 +52,7 @@ class RecordingViewModel: ObservableObject {
 
     // NEW: Track the folder + metadata for this session
     private var currentSessionFolder: URL?
-    private var currentSessionMetadata: SessionMetadata?
+    @Published var currentSessionMetadata: SessionMetadata?
 
     init() {
     loadLocalModel()
