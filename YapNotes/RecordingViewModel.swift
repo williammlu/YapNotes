@@ -14,62 +14,61 @@ class RecordingViewModel: ObservableObject {
     @Published var isRecording = false
     @Published var isProcessing = false
     @Published var transcribedText = ""
-
+    
     // We store yap objects (with duration, text, and fileURL)
     @Published var yaps: [YapInfo] = []
-
-    // Real-time amplitude for old single-line waveform
+    
+    // Real-time amplitude for waveform
     @Published var currentAmplitude: CGFloat = 0.0
-
+    
     // Real-time multiple bar amplitudes
     @Published var barAmplitudes: [CGFloat] = Array(repeating: 0, count: 20)
-
+    
     // For playback
     private var audioPlayer: AVAudioPlayer?
-
+    
     var recorder: AudioRecorder?
     private var whisperContext: WhisperContext?
     private var engine: AVAudioEngine?
     private var audioTimer: Timer?
-
+    
     // Session + chunking properties
     private var currentYapSamples = [Float]()
     private var silentFrameCount = 0
     private var yapHasSpeech = false
     private var yapStartTime: Date?
     private var yapIndex = 0
-
+    
     // Silence / chunk rules
     private let silenceThreshold: Float = 0.005
     private let requiredSilenceFrames = 10
     private let minChunkDurationSec: Double = 1.0
-
+    
     // For logging total record time
     private var recordingStart: Date?
-
+    
     // We store the actual sample rate from the engine
     private var engineSampleRate: Double = 16000.0
-
-    // NEW: Track the folder + metadata for this session
+    
+    // Track the folder + metadata for this session
     private var currentSessionFolder: URL?
     @Published var currentSessionMetadata: SessionMetadata?
-
+    
     init() {
-    loadLocalModel()
-    prepareAudio()
-    if currentSessionFolder == nil {
-        do {
-            let (folderURL, meta) = try SessionManager.shared.createNewSessionFolder()
-            currentSessionFolder = folderURL
-            currentSessionMetadata = meta
-        } catch {
-            print("Failed to create session folder during init: \(error)")
+        loadLocalModel()
+        prepareAudio()
+        if currentSessionFolder == nil {
+            do {
+                let (folderURL, meta) = try SessionManager.shared.createNewSessionFolder()
+                currentSessionFolder = folderURL
+                currentSessionMetadata = meta
+            } catch {
+                print("Failed to create session folder during init: \(error)")
+            }
         }
     }
-    }
-
+    
     private func loadLocalModel() {
-        // Adjust path as needed
         if let modelPath = Bundle.main.path(forResource: "ggml-base-q5_1", ofType: "bin", inDirectory: "Models") {
             do {
                 whisperContext = try WhisperContext.createContext(path: modelPath)
@@ -81,10 +80,26 @@ class RecordingViewModel: ObservableObject {
             print("Model file not found in bundle.")
         }
     }
-
+    
+    // New methods to manipulate visible transcribed text:
+    func clearTranscribedText() {
+        transcribedText = ""
+    }
+    
+    func removeLastWordFromTranscribedText() {
+        let words = transcribedText.split(separator: " ").map(String.init)
+        guard !words.isEmpty else { return }
+        transcribedText = words.dropLast().joined(separator: " ")
+    }
+    
+    // Retain existing clearYaps if needed for chunk management
+    func clearYaps() {
+        yaps.removeAll()
+    }
+    
     private func prepareAudio() {
         recorder = AudioRecorder()
-
+        
         let session = AVAudioSession.sharedInstance()
         do {
             try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetooth])
@@ -92,34 +107,33 @@ class RecordingViewModel: ObservableObject {
         } catch {
             print("Error setting AVAudioSession category: \(error)")
         }
-
+        
         engine = AVAudioEngine()
         guard let engine = engine else { return }
-
+        
         let inputNode = engine.inputNode
         let recordingFormat = inputNode.outputFormat(forBus: 0)
-
+        
         // Store the engine's actual sample rate
         self.engineSampleRate = recordingFormat.sampleRate
         print("AudioEngine sample rate: \(engineSampleRate) Hz")
-
-        // Install a tap
+        
         inputNode.installTap(onBus: 0, bufferSize: 1024, format: recordingFormat) { buffer, _ in
             guard let channelData = buffer.floatChannelData?[0] else { return }
             let frameCount = Int(buffer.frameLength)
-
+            
             // 1) Single overall amplitude
             var sumAmplitude: Float = 0
             for i in 0..<frameCount {
                 sumAmplitude += abs(channelData[i])
             }
             let avgAmplitude = sumAmplitude / Float(frameCount)
-
-            // 2) Multi-bar amplitude (20 bars, e.g.)
+            
+            // 2) Multi-bar amplitude (20 bars)
             let numberOfBars = 20
             let binSize = max(frameCount / numberOfBars, 1)
             var barValues = [Float](repeating: 0, count: numberOfBars)
-
+            
             for barIndex in 0..<numberOfBars {
                 let startIdx = barIndex * binSize
                 let endIdx = min(startIdx + binSize, frameCount)
@@ -130,41 +144,39 @@ class RecordingViewModel: ObservableObject {
                 let count = Float(endIdx - startIdx)
                 barValues[barIndex] = sumBin / max(count, 1)
             }
-
-            // Update UI on main thread
+            
             Task { @MainActor in
-                self.barAmplitudes = barValues.map { CGFloat($0 * 1.0) }
+                self.barAmplitudes = barValues.map { CGFloat($0) }
                 self.currentAmplitude = CGFloat(avgAmplitude * 2.0)
             }
-
+            
             // 3) If recording, accumulate samples + handle chunking
             if self.isRecording {
                 if avgAmplitude > self.silenceThreshold {
                     self.yapHasSpeech = true
                 }
-
+                
                 var localBuffer = [Float](repeating: 0, count: frameCount)
                 for i in 0..<frameCount {
                     localBuffer[i] = channelData[i]
                 }
                 self.currentYapSamples.append(contentsOf: localBuffer)
-
+                
                 if avgAmplitude < self.silenceThreshold {
                     self.silentFrameCount += 1
                 } else {
                     self.silentFrameCount = 0
                 }
-
+                
                 let now = Date()
                 let chunkDuration = now.timeIntervalSince(self.yapStartTime ?? now)
                 if self.silentFrameCount >= self.requiredSilenceFrames && chunkDuration >= self.minChunkDurationSec {
-                    print("Finalizing yap due to silence of frame count #\(self.silentFrameCount) and duration #\(chunkDuration)")
+                    print("Finalizing yap due to silence (frames: \(self.silentFrameCount), duration: \(chunkDuration)s)")
                     self.finalizeYap(force: false)
                 }
             }
         }
-
-        // Start engine
+        
         engine.prepare()
         do {
             try engine.start()
@@ -172,46 +184,31 @@ class RecordingViewModel: ObservableObject {
             print("Could not start AVAudioEngine: \(error)")
         }
     }
-
-    func stopRecording () async {
-        // Stop
+    
+    func stopRecording() async {
+        // Stop recording and invalidate timer
         isRecording = false
         audioTimer?.invalidate()
         audioTimer = nil
         await recorder?.stopRecording()
-
-        // Possibly finalize leftover
+        
+        // Finalize any remaining audio chunk
         if !currentYapSamples.isEmpty {
             finalizeYap(force: true)
         }
-
-        // Combine text
-        let allTexts = yaps.map { $0.text }
-        transcribedText = allTexts.joined(separator: " ")
-
-        // Removed old metadata save call
-        // saveCurrentSessionMetadata()
         
-        // Final save of session metadata at end of stopRecording()
+        // Removed regeneration of transcribedText from yaps.
+        // transcribedText remains as built up from each finalized chunk.
+        
         saveCurrentSessionMetadata()
-
     }
     
     func startRecording() async {
-    // Session folder already created in init()
-
-        // Resume recording without resetting session state
         isRecording = true
         recordingStart = Date()
-
-        // Track total record time
-        recordingStart = Date()
-
-        // Record to that session folder
         guard let folder = currentSessionFolder else { return }
         let wavURL = folder.appendingPathComponent("session.wav")
-
-        // Start recording
+        
         if recorder == nil {
             recorder = AudioRecorder()
         }
@@ -223,22 +220,18 @@ class RecordingViewModel: ObservableObject {
             print("Failed to start recording: \(error)")
             return
         }
-
-        // Mark the start of the first yap
         yapStartTime = Date()
     }
-    /// Toggle recording on/off
+    
     func toggleRecording() async {
         guard let whisperContext else { return }
-
         if isRecording {
             await stopRecording()
         } else {
-            // Start new session
-           await  startRecording()
+            await startRecording()
         }
     }
-
+    
     func endSession() async {
         if isRecording {
             await stopRecording()
@@ -250,7 +243,7 @@ class RecordingViewModel: ObservableObject {
         silentFrameCount = 0
         yapHasSpeech = false
         yapIndex = 0
-
+        
         do {
             let (folderURL, meta) = try SessionManager.shared.createNewSessionFolder()
             currentSessionFolder = folderURL
@@ -259,51 +252,43 @@ class RecordingViewModel: ObservableObject {
             print("Failed to create new session folder: \(error)")
         }
     }
-
+    
     private func finalizeYap(force: Bool) {
         let now = Date()
         let duration = now.timeIntervalSince(yapStartTime ?? now)
         let totalTime = timeStringSinceRecordingBegan()
-
+        
         let yapSamples = currentYapSamples
         currentYapSamples.removeAll()
         silentFrameCount = 0
-
-        print("Splitting yap #\(yapIndex + 1) at \(totalTime), length: \(duration)s")
-
+        
+        print("Finalizing yap #\(yapIndex + 1) at \(totalTime), duration: \(duration)s")
+        
         if yapHasSpeech {
             let idx = yapIndex + 1
-
-            // Optionally store each chunk as a separate WAV
-            // or you can skip chunk-level WAV
             let chunkFileName = "chunk-\(idx).wav"
             var chunkFileURL: URL?
-
+            
             if let folder = currentSessionFolder {
                 chunkFileURL = folder.appendingPathComponent(chunkFileName)
                 do {
-                    try savePCMToWav(
-                        yapSamples,
-                        fileURL: chunkFileURL!,
-                        sampleRate: Int32(engineSampleRate)
-                    )
+                    try savePCMToWav(yapSamples, fileURL: chunkFileURL!, sampleRate: Int32(engineSampleRate))
                 } catch {
                     print("Error saving chunk #\(idx) wav: \(error)")
                 }
             }
-
+            
             Task {
                 self.isProcessing = true
                 guard let whisperContext, !yapSamples.isEmpty else {
                     self.isProcessing = false
                     return
                 }
-
+                
                 let downsampled = self.downsampleTo16k(samples: yapSamples, inputRate: engineSampleRate)
                 await whisperContext.fullTranscribe(samples: downsampled)
-                let rawYapText = await whisperContext.getTranscription()
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-
+                let rawYapText = (await whisperContext.getTranscription()).trimmingCharacters(in: .whitespacesAndNewlines)
+                
                 if !rawYapText.isEmpty && !isUnacceptableOutput(rawYapText) {
                     let yapInfo = YapInfo(
                         index: idx,
@@ -313,9 +298,14 @@ class RecordingViewModel: ObservableObject {
                     )
                     await MainActor.run {
                         self.yaps.append(yapInfo)
+                        // Append new transcription to visible text.
+                        if self.transcribedText.isEmpty {
+                            self.transcribedText = rawYapText
+                        } else {
+                            self.transcribedText += " " + rawYapText
+                        }
                     }
                     saveCurrentSessionMetadata()
-                    // Also add to session metadata
                     if var meta = currentSessionMetadata {
                         let chunkMeta = ChunkMetadata(
                             index: idx,
@@ -325,10 +315,8 @@ class RecordingViewModel: ObservableObject {
                         )
                         meta.chunks.append(chunkMeta)
                         currentSessionMetadata = meta
-                        // Save it right away
                         saveCurrentSessionMetadata()
                     }
-
                     yapIndex += 1
                 } else {
                     print("Skipping chunk #\(idx) with text: \(rawYapText)")
@@ -338,18 +326,16 @@ class RecordingViewModel: ObservableObject {
         } else {
             print("Skipping yap #\(yapIndex + 1) - silent.")
         }
-
+        
         yapStartTime = Date()
         yapHasSpeech = false
     }
-
-    /// Save the updated metadata.json for current session
+    
     func saveCurrentSessionMetadata() {
-        guard let folder = currentSessionFolder,
-              let meta = currentSessionMetadata else { return }
+        guard let folder = currentSessionFolder, let meta = currentSessionMetadata else { return }
         SessionManager.shared.saveMetadata(meta, inFolder: folder)
     }
-
+    
     func playYapAudio(_ yap: YapInfo) {
         guard let fileURL = yap.fileURL else {
             print("No fileURL for yap #\(yap.index)")
@@ -363,7 +349,7 @@ class RecordingViewModel: ObservableObject {
             print("Error playing yap #\(yap.index): \(error)")
         }
     }
-
+    
     private func timeStringSinceRecordingBegan() -> String {
         guard let recStart = recordingStart else {
             recordingStart = Date()
@@ -372,24 +358,19 @@ class RecordingViewModel: ObservableObject {
         let interval = Date().timeIntervalSince(recStart)
         return String(format: "%.2fs since start", interval)
     }
-
-    // WAV writing with real sample rate
-    private func savePCMToWav(
-        _ samples: [Float],
-        fileURL: URL,
-        sampleRate: Int32
-    ) throws {
+    
+    private func savePCMToWav(_ samples: [Float], fileURL: URL, sampleRate: Int32) throws {
         let int16Samples = samples.map { sample -> Int16 in
             let clamped = max(-1.0, min(1.0, sample))
             return Int16(clamped * Float(Int16.max))
         }
         let numChannels: Int16 = 1
         let bitsPerSample: Int16 = 16
-
+        
         let subchunk2Size = int16Samples.count * MemoryLayout<Int16>.size
         let chunkSize: Int32 = 36 + Int32(subchunk2Size)
         let byteRate = Int32(numChannels) * Int32(bitsPerSample / 8) * sampleRate
-
+        
         var data = Data()
         data.append(contentsOf: "RIFF".utf8)
         data.append(contentsOf: int32ToBytes(chunkSize))
@@ -405,22 +386,19 @@ class RecordingViewModel: ObservableObject {
         data.append(contentsOf: int16ToBytes(bitsPerSample))
         data.append(contentsOf: "data".utf8)
         data.append(contentsOf: int32ToBytes(Int32(subchunk2Size)))
-
+        
         for sample in int16Samples {
             data.append(contentsOf: int16ToBytes(sample.littleEndian))
         }
-
+        
         try data.write(to: fileURL)
     }
-
+    
     private func downsampleTo16k(samples: [Float], inputRate: Double) -> [Float] {
-        guard inputRate > 16000.0 else {
-            return samples
-        }
+        guard inputRate > 16000.0 else { return samples }
         let ratio = inputRate / 16000.0
         var out = [Float]()
         out.reserveCapacity(Int(Double(samples.count) / ratio))
-
         var index = 0.0
         while Int(index) < samples.count {
             out.append(samples[Int(index)])
@@ -428,15 +406,15 @@ class RecordingViewModel: ObservableObject {
         }
         return out
     }
-
+    
     private func int16ToBytes(_ value: Int16) -> [UInt8] {
         withUnsafeBytes(of: value.littleEndian, Array.init)
     }
-
+    
     private func int32ToBytes(_ value: Int32) -> [UInt8] {
         withUnsafeBytes(of: value.littleEndian, Array.init)
     }
-
+    
     private func isUnacceptableOutput(_ text: String) -> Bool {
         let pattern = "^\\[.{0,18}\\]$"
         if let _ = text.range(of: pattern, options: .regularExpression) {

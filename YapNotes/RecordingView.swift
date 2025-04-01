@@ -10,8 +10,6 @@ fileprivate extension Comparable {
     }
 }
 
-
-
 struct RecordingView: View {
     @StateObject private var viewModel = RecordingViewModel()
 
@@ -30,10 +28,13 @@ struct RecordingView: View {
     @State private var isRightOpen = false
     @State private var gestureDirectionLocked: Bool = false
     @State private var isVerticalSwipe: Bool = false
-
     private let sideMenuWidth: CGFloat = UIConstants.sideMenuWidth
     private let animationDuration: Double = 0.3
 
+    
+    @State private var generateSummary: String = ""
+    @State private var hasGeneratedSummary = false
+    @State private var isGeneratingSummary = false
     // For auto-scroll logic
     @State private var userHasScrolledUp = false
 
@@ -114,28 +115,29 @@ struct RecordingView: View {
     }
 
     var body: some View {
-    ZStack(alignment: .leading) {
-        VStack {
-            Spacer()
-            HStack {
+        ZStack(alignment: .leading) {
+            // Share progress ring fixed at bottom (centered horizontally)
+            VStack {
                 Spacer()
-                ZStack {
-                    Circle()
-                        .trim(from: 0, to: max(0, (verticalDrag - UIConstants.shareProgressStartThreshold) / (UIConstants.shareActivationThreshold - UIConstants.shareProgressStartThreshold)))
-                        .stroke(Color.green, style: StrokeStyle(lineWidth: 4, lineCap: .round))
-                        .frame(width: 60, height: 60)
- 
-                    Image(systemName: "square.and.arrow.up")
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(width: 28, height: 28)
-                        .foregroundColor(.gray)
+                HStack {
+                    Spacer()
+                    ZStack {
+                        Circle()
+                            .trim(from: 0, to: max(0, (verticalDrag - UIConstants.shareProgressStartThreshold) / (UIConstants.shareActivationThreshold - UIConstants.shareProgressStartThreshold)))
+                            .stroke(Color.green, style: StrokeStyle(lineWidth: 4, lineCap: .round))
+                            .frame(width: 60, height: 60)
+                        Image(systemName: "square.and.arrow.up")
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 28, height: 28)
+                            .foregroundColor(.gray)
+                    }
+                    Spacer()
                 }
-                Spacer()
+                .padding(.bottom, 28)
             }
-            .padding(.bottom, 28)
-        }
-        .zIndex(0)
+            .zIndex(0)
+
             // Left menu
             SessionSidebarView(
                 onSessionClose: {
@@ -165,33 +167,31 @@ struct RecordingView: View {
                 .offset(x: sideMenuWidth + dragOffset)
             }
 
-        // Main content
-        ZStack {
-            Color.orange.ignoresSafeArea()
- 
-            mainContent
-            Color.black
-                .opacity(overlayAlpha)
-                .edgesIgnoringSafeArea(.all)
-                .onTapGesture {
-                    withAnimation(.easeOut(duration: animationDuration)) {
-                        dragOffset = 0
-                        isLeftOpen = false
-                        isRightOpen = false
+            // Main content
+            ZStack {
+                Color.orange.ignoresSafeArea()
+                mainContent
+                Color.black
+                    .opacity(overlayAlpha)
+                    .edgesIgnoringSafeArea(.all)
+                    .onTapGesture {
+                        withAnimation(.easeOut(duration: animationDuration)) {
+                            dragOffset = 0
+                            isLeftOpen = false
+                            isRightOpen = false
+                        }
                     }
-                }
-                .allowsHitTesting(overlayAlpha > 0.01)
-        }
+                    .allowsHitTesting(overlayAlpha > 0.01)
+            }
             .offset(x: dragOffset, y: -verticalDrag)
             .gesture(
                 DragGesture(minimumDistance: 10)
                     .onChanged { value in
                         let horizontal = abs(value.translation.width)
                         let vertical = abs(value.translation.height)
- 
                         guard !gestureDirectionLocked else {
                             if isVerticalSwipe {
-                            if !viewModel.yaps.isEmpty && !isLeftOpen && !isRightOpen && value.translation.height < 0 {
+                                if !viewModel.yaps.isEmpty && !isLeftOpen && !isRightOpen && value.translation.height < 0 {
                                     verticalDrag = min(abs(value.translation.height), UIConstants.shareActivationThreshold)
                                 }
                             } else {
@@ -208,8 +208,6 @@ struct RecordingView: View {
                             }
                             return
                         }
- 
-                        // Lock direction once clear
                         if horizontal >= 10 || vertical >= 10 {
                             gestureDirectionLocked = true
                             isVerticalSwipe = vertical > horizontal
@@ -217,18 +215,18 @@ struct RecordingView: View {
                     }
                     .onEnded { value in
                         if gestureDirectionLocked && isVerticalSwipe {
-                        if verticalDrag >= UIConstants.shareActivationThreshold {
-                            DispatchQueue.main.async {
-                                showShareSheet = true
+                            if verticalDrag >= UIConstants.shareActivationThreshold {
+                                DispatchQueue.main.async {
+                                    showShareSheet = true
+                                }
+                                withAnimation(.easeOut(duration: animationDuration)) {
+                                    verticalDrag = UIConstants.shareActivationThreshold
+                                }
+                            } else {
+                                withAnimation(.easeOut(duration: animationDuration)) {
+                                    verticalDrag = 0
+                                }
                             }
-                            withAnimation(.easeOut(duration: animationDuration)) {
-                                verticalDrag = UIConstants.shareActivationThreshold
-                            }
-                        } else {
-                            withAnimation(.easeOut(duration: animationDuration)) {
-                                verticalDrag = 0
-                            }
-                        }
                         } else {
                             finalizeDrag()
                         }
@@ -322,6 +320,7 @@ struct RecordingView: View {
             }
             .frame(height: 56)
 
+            // Tab selector
             HStack {
                 ForEach(TabType.allCases, id: \.self) { tab in
                     Button(action: { selectedTab = tab }) {
@@ -330,19 +329,37 @@ struct RecordingView: View {
                             .padding(.vertical, 8)
                             .frame(maxWidth: .infinity)
                             .foregroundColor(selectedTab == tab ? .white : .white.opacity(0.6))
-                            .background(
-                                selectedTab == tab ? Color.white.opacity(0.1) : Color.clear
-                            )
+                            .background(selectedTab == tab ? Color.white.opacity(0.1) : Color.clear)
                             .cornerRadius(8)
                     }
                 }
             }
             .padding(.horizontal, 24)
 
-            // Middle text scroller
             if selectedTab == .transcribe {
+                // Transcribe tab toolbar: X (clear visible text) and Backspace (remove last word)
+                HStack {
+                    Button {
+                        viewModel.clearTranscribedText()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .padding()
+                            .foregroundColor(.white)
+                    }
+                    Spacer()
+                    Button {
+                        viewModel.removeLastWordFromTranscribedText()
+                    } label: {
+                        Image(systemName: "delete.left")
+                            .padding()
+                            .foregroundColor(.white)
+                    }
+                }
+                .padding(.horizontal, 24)
+                
+                // Transcript text
                 ScrollView {
-                    Text(viewModel.yaps.map(\.text).joined(separator: " "))
+                    Text(viewModel.transcribedText)
                         .foregroundColor(.white)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 24)
@@ -350,70 +367,28 @@ struct RecordingView: View {
                 }
                 .frame(maxHeight: .infinity, alignment: .top)
                 .padding(.bottom, 16)
-
-                // Yaps list
-                if debugModeEnabled {
-                    if viewModel.yaps.isEmpty {
-                        Text("No yaps recorded yet.")
-                            .foregroundColor(.white)
+            } else {
+                // Generate tab
+                VStack(alignment: .leading, spacing: 12) {
+                    Button("Regenerate Summary") {
+                        // Optionally trigger summary regeneration here.
+                    }
+                    .font(.headline)
+                    .padding(.horizontal, 24)
+                    .padding(.top, 8)
+                    
+                    if isGeneratingSummary {
+                        Text("Generating summary...")
+                            .foregroundColor(.white.opacity(0.7))
                             .padding()
                     } else {
-                        ScrollViewReader { proxy in
-                            ScrollView(showsIndicators: true) {
-                                ForEach(viewModel.yaps) { yap in
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text("Yap #\(yap.index) — \(String(format: "%.2f", yap.duration))s")
-                                            .foregroundColor(.yellow)
-                                            .font(.subheadline)
-                                        Text(yap.text)
-                                            .foregroundColor(.white)
-                                    }
-                                    .padding()
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .background(Color.gray.opacity(0.2))
-                                    .cornerRadius(10)
-                                    .padding(.horizontal, 24)
-                                    .padding(.bottom, 4)
-                                    .id(yap.id)
-                                    .onTapGesture {
-                                        viewModel.playYapAudio(yap)
-                                    }
-                                    .contextMenu {
-                                        Button {
-                                            UIPasteboard.general.string = yap.text
-                                        } label: {
-                                            Label("Copy", systemImage: "doc.on.doc")
-                                        }
-                                        Button {
-                                            showShareSheet = true
-//                                            shareItems = yap.text
-                                        } label: {
-                                            Label("Share", systemImage: "square.and.arrow.up")
-                                        }
-                                    }
-                                }
-                            }
-                            .onPreferenceChange(BottomOffsetPreferenceKey.self) { offset in
-                                let screenHeight = UIScreen.main.bounds.height
-                                let threshold = screenHeight * 1.2
-                                userHasScrolledUp = (offset < -threshold)
-                            }
-                            .onChange(of: viewModel.yaps) { _ in
-                                if !userHasScrolledUp {
-                                    DispatchQueue.main.async {
-                                        withAnimation {
-                                            proxy.scrollTo("BOTTOM", anchor: .bottom)
-                                        }
-                                    }
-                                }
-                            }
+                        ScrollView {
+                            Text(generateSummary.isEmpty ? "No summary available." : generateSummary)
+                                .foregroundColor(.white)
+                                .padding()
                         }
                     }
                 }
-            } else {
-                Text("Coming soon: Generation mode")
-                    .foregroundColor(.white.opacity(0.7))
-                    .padding()
             }
 
             if viewModel.isProcessing {
@@ -428,30 +403,32 @@ struct RecordingView: View {
 
             Spacer().frame(height: 120).id("BOTTOM")
 
-            // Big record/pause button
-            VStack {
-                Spacer()
-                HStack {
+            // Big record/pause button shown only on Transcribe tab
+            if selectedTab == .transcribe {
+                VStack {
                     Spacer()
-                    ZStack {
-                        Circle()
-                            .fill(viewModel.isRecording ? .white : .red)
-                            .frame(width: 70, height: 70)
-                        Circle()
-                            .stroke(.white, lineWidth: 2)
-                            .frame(width: 74, height: 74)
-                        if viewModel.isRecording {
-                            Image(systemName: "pause.fill")
-                                .foregroundColor(.red)
-                                .font(.title)
+                    HStack {
+                        Spacer()
+                        ZStack {
+                            Circle()
+                                .fill(viewModel.isRecording ? .white : .red)
+                                .frame(width: 70, height: 70)
+                            Circle()
+                                .stroke(.white, lineWidth: 2)
+                                .frame(width: 74, height: 74)
+                            if viewModel.isRecording {
+                                Image(systemName: "pause.fill")
+                                    .foregroundColor(.red)
+                                    .font(.title)
+                            }
                         }
+                        .onTapGesture {
+                            Task { await viewModel.toggleRecording() }
+                        }
+                        Spacer()
                     }
-                    .onTapGesture {
-                        Task { await viewModel.toggleRecording() }
-                    }
-                    Spacer()
+                    .padding(.bottom, 32)
                 }
-                .padding(.bottom, 32)
             }
         }
     }
