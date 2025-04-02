@@ -87,6 +87,11 @@ struct SessionSidebarView: View {
     }
 }
 
+extension Notification.Name {
+    static let sessionMetadataDidUpdate = Notification.Name("sessionMetadataDidUpdate")
+}
+
+
 // Custom row view for a session
 struct SessionRowView: View {
     let session: SessionMetadata

@@ -6,7 +6,7 @@ struct YapInfo: Identifiable, Equatable {
     let index: Int
     let duration: Double
     let text: String
-    let fileURL: URL?
+    // fileURL removed since we no longer store chunk WAV files
 }
 
 @MainActor
@@ -15,7 +15,7 @@ class RecordingViewModel: ObservableObject {
     @Published var isProcessing = false
     @Published var transcribedText = ""
     
-    // We store yap objects (with duration, text, and fileURL)
+    // We store yaps, each corresponding to a chunk of recognized speech
     @Published var yaps: [YapInfo] = []
     
     // Real-time amplitude for waveform
@@ -24,7 +24,7 @@ class RecordingViewModel: ObservableObject {
     // Real-time multiple bar amplitudes
     @Published var barAmplitudes: [CGFloat] = Array(repeating: 0, count: 20)
     
-    // For playback
+    // For playback of the *entire* session if desired
     private var audioPlayer: AVAudioPlayer?
     
     var recorder: AudioRecorder?
@@ -81,7 +81,6 @@ class RecordingViewModel: ObservableObject {
         }
     }
     
-    // New methods to manipulate visible transcribed text:
     func clearTranscribedText() {
         transcribedText = ""
     }
@@ -90,11 +89,9 @@ class RecordingViewModel: ObservableObject {
         let words = transcribedText.split(separator: " ").map(String.init)
         guard !words.isEmpty else { return }
         transcribedText = words.dropLast().joined(separator: " ")
-        // TODO there seems to be an issue where the post-deletion output isn't saved properly
         saveCurrentSessionMetadata()
     }
     
-    // Retain existing clearYaps if needed for chunk management
     func clearYaps() {
         yaps.removeAll()
         transcribedText = ""
@@ -118,7 +115,6 @@ class RecordingViewModel: ObservableObject {
         let inputNode = engine.inputNode
         let recordingFormat = inputNode.outputFormat(forBus: 0)
         
-        // Store the engine's actual sample rate
         self.engineSampleRate = recordingFormat.sampleRate
         print("AudioEngine sample rate: \(engineSampleRate) Hz")
         
@@ -126,18 +122,15 @@ class RecordingViewModel: ObservableObject {
             guard let channelData = buffer.floatChannelData?[0] else { return }
             let frameCount = Int(buffer.frameLength)
             
-            // 1) Single overall amplitude
             var sumAmplitude: Float = 0
             for i in 0..<frameCount {
                 sumAmplitude += abs(channelData[i])
             }
             let avgAmplitude = sumAmplitude / Float(frameCount)
             
-            // 2) Multi-bar amplitude (20 bars)
             let numberOfBars = 20
             let binSize = max(frameCount / numberOfBars, 1)
             var barValues = [Float](repeating: 0, count: numberOfBars)
-            
             for barIndex in 0..<numberOfBars {
                 let startIdx = barIndex * binSize
                 let endIdx = min(startIdx + binSize, frameCount)
@@ -154,7 +147,7 @@ class RecordingViewModel: ObservableObject {
                 self.currentAmplitude = CGFloat(avgAmplitude * 2.0)
             }
             
-            // 3) If recording, accumulate samples + handle chunking
+            // Chunk accumulation
             if self.isRecording {
                 if avgAmplitude > self.silenceThreshold {
                     self.yapHasSpeech = true
@@ -190,19 +183,14 @@ class RecordingViewModel: ObservableObject {
     }
     
     func stopRecording() async {
-        // Stop recording and invalidate timer
         isRecording = false
         audioTimer?.invalidate()
         audioTimer = nil
         await recorder?.stopRecording()
         
-        // Finalize any remaining audio chunk
         if !currentYapSamples.isEmpty {
             finalizeYap(force: true)
         }
-        
-        // Removed regeneration of transcribedText from yaps.
-        // transcribedText remains as built up from each finalized chunk.
         
         saveCurrentSessionMetadata()
     }
@@ -270,17 +258,8 @@ class RecordingViewModel: ObservableObject {
         
         if yapHasSpeech {
             let idx = yapIndex + 1
-            let chunkFileName = "chunk-\(idx).wav"
-            var chunkFileURL: URL?
-            
-            if let folder = currentSessionFolder {
-                chunkFileURL = folder.appendingPathComponent(chunkFileName)
-                do {
-                    try savePCMToWav(yapSamples, fileURL: chunkFileURL!, sampleRate: Int32(engineSampleRate))
-                } catch {
-                    print("Error saving chunk #\(idx) wav: \(error)")
-                }
-            }
+            // No longer saving chunk WAV
+            // No chunkFileURL creation or usage here
             
             Task {
                 self.isProcessing = true
@@ -297,12 +276,10 @@ class RecordingViewModel: ObservableObject {
                     let yapInfo = YapInfo(
                         index: idx,
                         duration: duration,
-                        text: rawYapText,
-                        fileURL: chunkFileURL
+                        text: rawYapText
                     )
                     await MainActor.run {
                         self.yaps.append(yapInfo)
-                        // Append new transcription to visible text.
                         if self.transcribedText.isEmpty {
                             self.transcribedText = rawYapText
                         } else {
@@ -311,11 +288,11 @@ class RecordingViewModel: ObservableObject {
                     }
                     saveCurrentSessionMetadata()
                     if var meta = currentSessionMetadata {
+                        // We keep chunk concept but no longer store a fileName
                         let chunkMeta = ChunkMetadata(
                             index: idx,
                             duration: duration,
-                            text: rawYapText,
-                            fileName: chunkFileName
+                            text: rawYapText
                         )
                         meta.chunks.append(chunkMeta)
                         meta.transcribedText = self.transcribedText
@@ -341,18 +318,9 @@ class RecordingViewModel: ObservableObject {
         SessionManager.shared.saveMetadata(meta, inFolder: folder)
     }
     
+    // Removed chunk-level audio playback since we are no longer storing chunk WAVs:
     func playYapAudio(_ yap: YapInfo) {
-        guard let fileURL = yap.fileURL else {
-            print("No fileURL for yap #\(yap.index)")
-            return
-        }
-        do {
-            audioPlayer = try AVAudioPlayer(contentsOf: fileURL)
-            audioPlayer?.prepareToPlay()
-            audioPlayer?.play()
-        } catch {
-            print("Error playing yap #\(yap.index): \(error)")
-        }
+        print("Per-chunk playback is no longer available. No WAV file stored for chunk #\(yap.index).")
     }
     
     private func timeStringSinceRecordingBegan() -> String {
@@ -362,41 +330,6 @@ class RecordingViewModel: ObservableObject {
         }
         let interval = Date().timeIntervalSince(recStart)
         return String(format: "%.2fs since start", interval)
-    }
-    
-    private func savePCMToWav(_ samples: [Float], fileURL: URL, sampleRate: Int32) throws {
-        let int16Samples = samples.map { sample -> Int16 in
-            let clamped = max(-1.0, min(1.0, sample))
-            return Int16(clamped * Float(Int16.max))
-        }
-        let numChannels: Int16 = 1
-        let bitsPerSample: Int16 = 16
-        
-        let subchunk2Size = int16Samples.count * MemoryLayout<Int16>.size
-        let chunkSize: Int32 = 36 + Int32(subchunk2Size)
-        let byteRate = Int32(numChannels) * Int32(bitsPerSample / 8) * sampleRate
-        
-        var data = Data()
-        data.append(contentsOf: "RIFF".utf8)
-        data.append(contentsOf: int32ToBytes(chunkSize))
-        data.append(contentsOf: "WAVE".utf8)
-        data.append(contentsOf: "fmt ".utf8)
-        data.append(contentsOf: int32ToBytes(16))
-        data.append(contentsOf: int16ToBytes(1))    // PCM
-        data.append(contentsOf: int16ToBytes(numChannels))
-        data.append(contentsOf: int32ToBytes(sampleRate))
-        data.append(contentsOf: int32ToBytes(byteRate))
-        let blockAlign = Int16(numChannels * bitsPerSample / 8)
-        data.append(contentsOf: int16ToBytes(blockAlign))
-        data.append(contentsOf: int16ToBytes(bitsPerSample))
-        data.append(contentsOf: "data".utf8)
-        data.append(contentsOf: int32ToBytes(Int32(subchunk2Size)))
-        
-        for sample in int16Samples {
-            data.append(contentsOf: int16ToBytes(sample.littleEndian))
-        }
-        
-        try data.write(to: fileURL)
     }
     
     private func downsampleTo16k(samples: [Float], inputRate: Double) -> [Float] {
@@ -410,14 +343,6 @@ class RecordingViewModel: ObservableObject {
             index += ratio
         }
         return out
-    }
-    
-    private func int16ToBytes(_ value: Int16) -> [UInt8] {
-        withUnsafeBytes(of: value.littleEndian, Array.init)
-    }
-    
-    private func int32ToBytes(_ value: Int32) -> [UInt8] {
-        withUnsafeBytes(of: value.littleEndian, Array.init)
     }
     
     private func isUnacceptableOutput(_ text: String) -> Bool {

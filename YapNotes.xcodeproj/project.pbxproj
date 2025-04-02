@@ -81,10 +81,12 @@
 			isa = PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet;
 			attributesByRelativePath = {
 				"Models/ggml-base-q5_1.bin" = (CodeSignOnCopy, );
+				"Models/ggml-large-v3-turbo-q5_0.bin" = (CodeSignOnCopy, );
 			};
 			buildPhase = BB46826E2D90CF6B00B5165D /* CopyFiles */;
 			membershipExceptions = (
 				"Models/ggml-base-q5_1.bin",
+				"Models/ggml-large-v3-turbo-q5_0.bin",
 			);
 		};
 /* End PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */

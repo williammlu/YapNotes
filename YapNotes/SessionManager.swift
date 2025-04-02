@@ -1,38 +1,33 @@
 import Foundation
 
-/// Simple struct to describe one finalized chunk
 struct ChunkMetadata: Codable {
     let index: Int
     let duration: Double
     let text: String
-    let fileName: String? // chunk-1.wav if you store chunk wavs, or nil
+    // Removed fileName property, as chunk WAV files are no longer used
 }
 
-/// Holds all metadata for one session, stored in metadata.json
 struct SessionMetadata: Codable, Identifiable {
-    let id: String            // e.g., a UUID or timestamp
+    let id: String
     let startTime: Date
     var chunks: [ChunkMetadata]
     var transcribedText: String?
 }
 
-/// Manages creation & loading of session folders with WAV + JSON
 class SessionManager {
 
     static let shared = SessionManager()
 
     private init() {}
 
-    /// Create a new folder for a session, returning the folder URL + empty metadata
     func createNewSessionFolder() throws -> (folderURL: URL, metadata: SessionMetadata) {
         let dateFormatter = ISO8601DateFormatter()
-        let timeStamp = dateFormatter.string(from: Date())  // e.g. 2023-09-25T14:03:12Z
+        let timeStamp = dateFormatter.string(from: Date())
         let sessionID = "session-\(timeStamp)"
 
         let folderURL = try getRecordingsDirectory().appendingPathComponent(sessionID)
         try FileManager.default.createDirectory(at: folderURL, withIntermediateDirectories: true)
 
-        // Create initial metadata
         let meta = SessionMetadata(
             id: sessionID,
             startTime: Date(),
@@ -42,14 +37,12 @@ class SessionManager {
         return (folderURL, meta)
     }
 
-    /// Load all session folders in the Recordings directory, read metadata.json if present
     func loadAllSessions() -> [SessionMetadata] {
         var results: [SessionMetadata] = []
 
         do {
             let root = try getRecordingsDirectory()
             let contents = try FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)
-            // Filter only directories named like 'session-...'
             let sessionFolders = contents.filter { $0.lastPathComponent.hasPrefix("session-") }
 
             for folder in sessionFolders {
@@ -72,7 +65,6 @@ class SessionManager {
         return results
     }
 
-    /// Save the metadata.json for a session
     func saveMetadata(_ metadata: SessionMetadata, inFolder folderURL: URL) {
         let metaURL = folderURL.appendingPathComponent("metadata.json")
         do {
@@ -85,7 +77,6 @@ class SessionManager {
         }
     }
 
-    /// Delete a session's folder (including metadata.json & any WAV files)
     func deleteSession(_ session: SessionMetadata) {
         do {
             let root = try getRecordingsDirectory()
@@ -98,7 +89,6 @@ class SessionManager {
         }
     }
 
-    /// Returns the main 'Recordings' directory inside Documents
     private func getRecordingsDirectory() throws -> URL {
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         let recDir = docs.appendingPathComponent("Recordings")
@@ -107,8 +97,4 @@ class SessionManager {
         }
         return recDir
     }
-}
-
-extension Notification.Name {
-    static let sessionMetadataDidUpdate = Notification.Name("sessionMetadataDidUpdate")
 }
