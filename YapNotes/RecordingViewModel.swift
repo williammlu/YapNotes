@@ -90,11 +90,15 @@ class RecordingViewModel: ObservableObject {
         let words = transcribedText.split(separator: " ").map(String.init)
         guard !words.isEmpty else { return }
         transcribedText = words.dropLast().joined(separator: " ")
+        // TODO there seems to be an issue where the post-deletion output isn't saved properly
+        saveCurrentSessionMetadata()
     }
     
     // Retain existing clearYaps if needed for chunk management
     func clearYaps() {
         yaps.removeAll()
+        transcribedText = ""
+        saveCurrentSessionMetadata()
     }
     
     private func prepareAudio() {
@@ -314,6 +318,7 @@ class RecordingViewModel: ObservableObject {
                             fileName: chunkFileName
                         )
                         meta.chunks.append(chunkMeta)
+                        meta.transcribedText = self.transcribedText
                         currentSessionMetadata = meta
                         saveCurrentSessionMetadata()
                     }

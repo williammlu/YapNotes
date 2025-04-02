@@ -126,24 +126,12 @@ struct SessionDetailView: View {
         NavigationView {
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("Session: \(session.id)")
+                    Text("Final Transcript:")
                         .font(.title2)
                         .foregroundColor(.white)
-                    Text("Started: \(session.startTime.formatted(date: .abbreviated, time: .shortened))")
-                        .font(.subheadline)
-                        .foregroundColor(.gray)
-                    Divider()
-                    ForEach(session.chunks, id: \.index) { chunk in
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Chunk #\(chunk.index)").bold()
-                                .foregroundColor(.white)
-                            Text("Duration: \(chunk.duration, specifier: "%.2f")s")
-                                .foregroundColor(.gray)
-                            Text(chunk.text)
-                                .foregroundColor(.white)
-                        }
-                        .padding(.bottom, 6)
-                    }
+                    Text((session.transcribedText == nil ? "No transcript available." : session.transcribedText) ?? "nothing..")
+                        .font(.body)
+                        .foregroundColor(.white)
                 }
                 .padding()
             }

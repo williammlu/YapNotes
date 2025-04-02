@@ -13,6 +13,7 @@ struct SessionMetadata: Codable, Identifiable {
     let id: String            // e.g., a UUID or timestamp
     let startTime: Date
     var chunks: [ChunkMetadata]
+    var transcribedText: String?
 }
 
 /// Manages creation & loading of session folders with WAV + JSON
@@ -35,7 +36,8 @@ class SessionManager {
         let meta = SessionMetadata(
             id: sessionID,
             startTime: Date(),
-            chunks: []
+            chunks: [],
+            transcribedText: nil
         )
         return (folderURL, meta)
     }
@@ -75,6 +77,7 @@ class SessionManager {
         let metaURL = folderURL.appendingPathComponent("metadata.json")
         do {
             let data = try JSONEncoder().encode(metadata)
+            print("saving data \(data)")
             try data.write(to: metaURL)
             NotificationCenter.default.post(name: .sessionMetadataDidUpdate, object: nil)
         } catch {

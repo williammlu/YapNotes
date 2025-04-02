@@ -12,15 +12,15 @@ fileprivate extension Comparable {
 
 struct RecordingView: View {
     @StateObject private var viewModel = RecordingViewModel()
-
+    
     private let debugModeEnabled: Bool = false
     @State private var selectedTab: TabType = .transcribe
-
+    
     private enum TabType: String, CaseIterable {
         case transcribe = "Transcribe"
         case generate = "Generate"
     }
-
+    
     // For partial sliding
     @State private var dragOffset: CGFloat = 0
     @State private var verticalDrag: CGFloat = 0
@@ -30,18 +30,18 @@ struct RecordingView: View {
     @State private var isVerticalSwipe: Bool = false
     private let sideMenuWidth: CGFloat = UIConstants.sideMenuWidth
     private let animationDuration: Double = 0.3
-
+    
     
     @State private var generateSummary: String = ""
     @State private var hasGeneratedSummary = false
     @State private var isGeneratingSummary = false
     // For auto-scroll logic
     @State private var userHasScrolledUp = false
-
+    
     // For share sheet
     @State private var showShareSheet = false
     @State private var shareContent: String = ""
-
+    
     // Decide final offset after drag ends
     private func finalizeDrag() {
         // If offset is > 0, we consider left side open or close
@@ -91,14 +91,14 @@ struct RecordingView: View {
         }
         print("finalize drag =>", dragOffset)
     }
-
+    
     /// Compute overlay alpha based on absolute offset
     private var overlayAlpha: Double {
         let fraction = Double(abs(dragOffset)) / Double(sideMenuWidth)
         // up to 0.9 alpha
         return fraction * 0.3
     }
-
+    
     // Doggy icon based on amplitude
     private var doggyIconName: String {
         let amp = viewModel.currentAmplitude
@@ -109,11 +109,11 @@ struct RecordingView: View {
             return "doggy-sound-1"
         case ..<0.075:
             return "doggy-sound-2"
-    default:
-        return "doggy-sound-3"
+        default:
+            return "doggy-sound-3"
+        }
     }
-    }
-
+    
     var body: some View {
         ZStack(alignment: .leading) {
             // Share progress ring fixed at bottom (centered horizontally)
@@ -137,7 +137,7 @@ struct RecordingView: View {
                 .padding(.bottom, 28)
             }
             .zIndex(0)
-
+            
             // Left menu
             SessionSidebarView(
                 onSessionClose: {
@@ -152,7 +152,7 @@ struct RecordingView: View {
             )
             .frame(width: sideMenuWidth)
             .offset(x: dragOffset - sideMenuWidth)
-
+            
             // Right menu
             HStack {
                 Spacer()
@@ -166,7 +166,7 @@ struct RecordingView: View {
                 .frame(width: sideMenuWidth)
                 .offset(x: sideMenuWidth + dragOffset)
             }
-
+            
             // Main content
             ZStack {
                 Color.orange.ignoresSafeArea()
@@ -252,11 +252,11 @@ struct RecordingView: View {
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)) { _ in
             viewModel.saveCurrentSessionMetadata()
         }
-        .onChange(of: viewModel.yaps) { yaps in
-            shareContent = yaps.map(\.text).joined(separator: " ")
+        .onChange(of: viewModel.transcribedText) { text in
+            shareContent = text
         }
     }
-
+    
     private var mainContent: some View {
         VStack(spacing: 10) {
             // Top row: Left & right toggles
@@ -282,9 +282,9 @@ struct RecordingView: View {
                             .font(.title)
                             .foregroundColor(.white)
                     }
-
+                    
                     Spacer()
-
+                    
                     Image(doggyIconName)
                         .resizable()
                         .scaledToFit()
@@ -292,9 +292,9 @@ struct RecordingView: View {
                         .colorInvert()
                         .frame(width: 100, height: 100)
                         .padding(.leading, 5)
-
+                    
                     Spacer()
-
+                    
                     // Gear (right) toggle
                     Button {
                         withAnimation(.easeOut(duration: animationDuration)) {
@@ -319,7 +319,7 @@ struct RecordingView: View {
                 .padding(.horizontal, 24)
             }
             .frame(height: 56)
-
+            
             // Tab selector
             HStack {
                 ForEach(TabType.allCases, id: \.self) { tab in
@@ -335,27 +335,8 @@ struct RecordingView: View {
                 }
             }
             .padding(.horizontal, 24)
-
+            
             if selectedTab == .transcribe {
-                // Transcribe tab toolbar: X (clear visible text) and Backspace (remove last word)
-                HStack {
-                    Button {
-                        viewModel.clearTranscribedText()
-                    } label: {
-                        Image(systemName: "xmark")
-                            .padding()
-                            .foregroundColor(.white)
-                    }
-                    Spacer()
-                    Button {
-                        viewModel.removeLastWordFromTranscribedText()
-                    } label: {
-                        Image(systemName: "delete.left")
-                            .padding()
-                            .foregroundColor(.white)
-                    }
-                }
-                .padding(.horizontal, 24)
                 
                 // Transcript text
                 ScrollView {
@@ -390,7 +371,7 @@ struct RecordingView: View {
                     }
                 }
             }
-
+            
             if viewModel.isProcessing {
                 Text("Processing")
                     .foregroundColor(.white)
@@ -400,15 +381,28 @@ struct RecordingView: View {
                     .padding()
                     .id("PROCESSING")
             }
-
+            
             Spacer().frame(height: 120).id("BOTTOM")
-
+            
             // Big record/pause button shown only on Transcribe tab
             if selectedTab == .transcribe {
                 VStack {
                     Spacer()
-                    HStack {
+                    HStack(alignment: .center) {
                         Spacer()
+                        // X button
+                        Button {
+                            viewModel.clearTranscribedText()
+                        } label: {
+                            Image(systemName: "xmark")
+                                .foregroundColor(.white)
+                                .font(.title)
+                                .padding(12)
+                                .background(Color.black.opacity(0.2))
+                                .clipShape(Circle())
+                        }
+                        Spacer()
+                        // Record/pause button
                         ZStack {
                             Circle()
                                 .fill(viewModel.isRecording ? .white : .red)
@@ -424,6 +418,19 @@ struct RecordingView: View {
                         }
                         .onTapGesture {
                             Task { await viewModel.toggleRecording() }
+                        }
+                        Spacer()
+                        // Backspace button
+                        Button {
+                            viewModel.removeLastWordFromTranscribedText()
+                        } label: {
+                            Image(systemName: "delete.left")
+                                .foregroundColor(.white)
+                                .font(.title)
+                                .padding(12)
+                                .background(Color.black.opacity(0.2))
+                                .clipShape(Circle())
+                                .offset(x: -2) // Nudge the icon 2px to the left
                         }
                         Spacer()
                     }
