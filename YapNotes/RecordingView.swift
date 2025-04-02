@@ -2,7 +2,6 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 fileprivate extension Comparable {
-    /// Clamps the value to a closed range
     func clamped(to range: ClosedRange<Self>) -> Self {
         if self < range.lowerBound { return range.lowerBound }
         if self > range.upperBound { return range.upperBound }
@@ -12,11 +11,11 @@ fileprivate extension Comparable {
 
 struct RecordingView: View {
     @StateObject private var viewModel = RecordingViewModel()
-    
+
     private let debugModeEnabled: Bool = false
     @State private var selectedTab: TabType = .transcribe
     
-    private enum TabType: String, CaseIterable {
+    enum TabType: String, CaseIterable {
         case transcribe = "Transcribe"
         case generate = "Generate"
     }
@@ -31,10 +30,10 @@ struct RecordingView: View {
     private let sideMenuWidth: CGFloat = UIConstants.sideMenuWidth
     private let animationDuration: Double = 0.3
     
-    
     @State private var generateSummary: String = ""
     @State private var hasGeneratedSummary = false
     @State private var isGeneratingSummary = false
+    
     // For auto-scroll logic
     @State private var userHasScrolledUp = false
     
@@ -44,7 +43,6 @@ struct RecordingView: View {
     
     // Decide final offset after drag ends
     private func finalizeDrag() {
-        // If offset is > 0, we consider left side open or close
         if dragOffset > 0 {
             let threshold = sideMenuWidth * (isLeftOpen ? (1.0 - UIConstants.sideMenuSwipeThreshold) : UIConstants.sideMenuSwipeThreshold)
             if dragOffset >= threshold {
@@ -63,9 +61,7 @@ struct RecordingView: View {
                 isLeftOpen = false
                 isRightOpen = false
             }
-        }
-        // If offset < 0, we consider right side
-        else if dragOffset < 0 {
+        } else if dragOffset < 0 {
             let threshold = sideMenuWidth * (isRightOpen ? (1.0 - UIConstants.sideMenuSwipeThreshold) : UIConstants.sideMenuSwipeThreshold)
             if dragOffset <= -threshold {
                 withAnimation(.easeOut(duration: animationDuration)) {
@@ -83,23 +79,17 @@ struct RecordingView: View {
                 isLeftOpen = false
                 isRightOpen = false
             }
-        }
-        // Otherwise near zero => closed
-        else {
+        } else {
             isLeftOpen = false
             isRightOpen = false
         }
-        print("finalize drag =>", dragOffset)
     }
     
-    /// Compute overlay alpha based on absolute offset
     private var overlayAlpha: Double {
         let fraction = Double(abs(dragOffset)) / Double(sideMenuWidth)
-        // up to 0.9 alpha
         return fraction * 0.3
     }
     
-    // Doggy icon based on amplitude
     private var doggyIconName: String {
         let amp = viewModel.currentAmplitude
         switch amp {
@@ -116,14 +106,15 @@ struct RecordingView: View {
     
     var body: some View {
         ZStack(alignment: .leading) {
-            // Share progress ring fixed at bottom (centered horizontally)
+            // Share ring at bottom center
             VStack {
                 Spacer()
                 HStack {
                     Spacer()
                     ZStack {
                         Circle()
-                            .trim(from: 0, to: max(0, (verticalDrag - UIConstants.shareProgressStartThreshold) / (UIConstants.shareActivationThreshold - UIConstants.shareProgressStartThreshold)))
+                            .trim(from: 0,
+                                  to: max(0, (verticalDrag - UIConstants.shareProgressStartThreshold) / (UIConstants.shareActivationThreshold - UIConstants.shareProgressStartThreshold)))
                             .stroke(Color.green, style: StrokeStyle(lineWidth: 4, lineCap: .round))
                             .frame(width: 60, height: 60)
                         Image(systemName: "square.and.arrow.up")
@@ -170,7 +161,7 @@ struct RecordingView: View {
             // Main content
             ZStack {
                 Color.orange.ignoresSafeArea()
-                mainContent
+                mainContentView
                 Color.black
                     .opacity(overlayAlpha)
                     .edgesIgnoringSafeArea(.all)
@@ -213,7 +204,7 @@ struct RecordingView: View {
                             isVerticalSwipe = vertical > horizontal
                         }
                     }
-                    .onEnded { value in
+                    .onEnded { _ in
                         if gestureDirectionLocked && isVerticalSwipe {
                             if verticalDrag >= UIConstants.shareActivationThreshold {
                                 DispatchQueue.main.async {
@@ -257,119 +248,56 @@ struct RecordingView: View {
         }
     }
     
-    private var mainContent: some View {
+    @ViewBuilder
+    private var mainContentView: some View {
         VStack(spacing: 10) {
-            // Top row: Left & right toggles
-            ZStack(alignment: .top) {
-                HStack {
-                    // Folder (left) toggle
-                    Button {
-                        withAnimation(.easeOut(duration: animationDuration)) {
-                            if isLeftOpen {
-                                dragOffset = 0
-                                isLeftOpen = false
-                            } else {
-                                dragOffset = sideMenuWidth
-                                isLeftOpen = true
-                                isRightOpen = false
-                                if viewModel.isRecording {
-                                    Task { await viewModel.recorder?.stopRecording() }
-                                }
+            RecordingHeaderView(
+                onLeftMenuTapped: {
+                    withAnimation(.easeOut(duration: animationDuration)) {
+                        if isLeftOpen {
+                            dragOffset = 0
+                            isLeftOpen = false
+                        } else {
+                            dragOffset = sideMenuWidth
+                            isLeftOpen = true
+                            isRightOpen = false
+                            if viewModel.isRecording {
+                                Task { await viewModel.recorder?.stopRecording() }
                             }
                         }
-                    } label: {
-                        Image(systemName: "folder")
-                            .font(.title)
-                            .foregroundColor(.white)
                     }
-                    
-                    Spacer()
-                    
-                    Image(doggyIconName)
-                        .resizable()
-                        .scaledToFit()
-                        .foregroundColor(.white)
-                        .colorInvert()
-                        .frame(width: 100, height: 100)
-                        .padding(.leading, 5)
-                    
-                    Spacer()
-                    
-                    // Gear (right) toggle
-                    Button {
-                        withAnimation(.easeOut(duration: animationDuration)) {
-                            if isRightOpen {
-                                dragOffset = 0
-                                isRightOpen = false
-                            } else {
-                                dragOffset = -sideMenuWidth
-                                isRightOpen = true
-                                isLeftOpen = false
-                                if viewModel.isRecording {
-                                    Task { await viewModel.recorder?.stopRecording() }
-                                }
+                },
+                onRightMenuTapped: {
+                    withAnimation(.easeOut(duration: animationDuration)) {
+                        if isRightOpen {
+                            dragOffset = 0
+                            isRightOpen = false
+                        } else {
+                            dragOffset = -sideMenuWidth
+                            isRightOpen = true
+                            isLeftOpen = false
+                            if viewModel.isRecording {
+                                Task { await viewModel.recorder?.stopRecording() }
                             }
                         }
-                    } label: {
-                        Image(systemName: "gearshape")
-                            .font(.title)
-                            .foregroundColor(.white)
                     }
-                }
-                .padding(.horizontal, 24)
-            }
-            .frame(height: 56)
-            
-            // Tab selector
-            HStack {
-                ForEach(TabType.allCases, id: \.self) { tab in
-                    Button(action: { selectedTab = tab }) {
-                        Text(tab.rawValue)
-                            .fontWeight(selectedTab == tab ? .bold : .regular)
-                            .padding(.vertical, 8)
-                            .frame(maxWidth: .infinity)
-                            .foregroundColor(selectedTab == tab ? .white : .white.opacity(0.6))
-                            .background(selectedTab == tab ? Color.white.opacity(0.1) : Color.clear)
-                            .cornerRadius(8)
-                    }
-                }
-            }
-            .padding(.horizontal, 24)
+                },
+                doggyIconName: doggyIconName
+            )
+            RecordingTabsView(
+                tabs: TabType.allCases,
+                selectedTab: $selectedTab
+            )
             
             if selectedTab == .transcribe {
-                
-                // Transcript text
-                ScrollView {
-                    Text(viewModel.transcribedText)
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 24)
-                        .padding(.top, 16)
-                }
-                .frame(maxHeight: .infinity, alignment: .top)
-                .padding(.bottom, 16)
+                TranscribeTabView(
+                    transcribedText: viewModel.transcribedText
+                )
             } else {
-                // Generate tab
-                VStack(alignment: .leading, spacing: 12) {
-                    Button("Regenerate Summary") {
-                        // Optionally trigger summary regeneration here.
-                    }
-                    .font(.headline)
-                    .padding(.horizontal, 24)
-                    .padding(.top, 8)
-                    
-                    if isGeneratingSummary {
-                        Text("Generating summary...")
-                            .foregroundColor(.white.opacity(0.7))
-                            .padding()
-                    } else {
-                        ScrollView {
-                            Text(generateSummary.isEmpty ? "No summary available." : generateSummary)
-                                .foregroundColor(.white)
-                                .padding()
-                        }
-                    }
-                }
+                GenerateTabView(
+                    generateSummary: generateSummary,
+                    isGeneratingSummary: isGeneratingSummary
+                )
             }
             
             if viewModel.isProcessing {
@@ -384,58 +312,19 @@ struct RecordingView: View {
             
             Spacer().frame(height: 120).id("BOTTOM")
             
-            // Big record/pause button shown only on Transcribe tab
             if selectedTab == .transcribe {
-                VStack {
-                    Spacer()
-                    HStack(alignment: .center) {
-                        Spacer()
-                        // X button
-                        Button {
-                            viewModel.clearTranscribedText()
-                        } label: {
-                            Image(systemName: "xmark")
-                                .foregroundColor(.white)
-                                .font(.title)
-                                .padding(12)
-                                .background(Color.black.opacity(0.2))
-                                .clipShape(Circle())
-                        }
-                        Spacer()
-                        // Record/pause button
-                        ZStack {
-                            Circle()
-                                .fill(viewModel.isRecording ? .white : .red)
-                                .frame(width: 70, height: 70)
-                            Circle()
-                                .stroke(.white, lineWidth: 2)
-                                .frame(width: 74, height: 74)
-                            if viewModel.isRecording {
-                                Image(systemName: "pause.fill")
-                                    .foregroundColor(.red)
-                                    .font(.title)
-                            }
-                        }
-                        .onTapGesture {
-                            Task { await viewModel.toggleRecording() }
-                        }
-                        Spacer()
-                        // Backspace button
-                        Button {
-                            viewModel.removeLastWordFromTranscribedText()
-                        } label: {
-                            Image(systemName: "delete.left")
-                                .foregroundColor(.white)
-                                .font(.title)
-                                .padding(12)
-                                .background(Color.black.opacity(0.2))
-                                .clipShape(Circle())
-                                .offset(x: -2) // Nudge the icon 2px to the left
-                        }
-                        Spacer()
+                RecordingFooterControls(
+                    onClearText: {
+                        viewModel.clearTranscribedText()
+                    },
+                    onToggleRecording: {
+                        Task { await viewModel.toggleRecording() }
+                    },
+                    isRecording: viewModel.isRecording,
+                    onRemoveLastWord: {
+                        viewModel.removeLastWordFromTranscribedText()
                     }
-                    .padding(.bottom, 32)
-                }
+                )
             }
         }
     }
